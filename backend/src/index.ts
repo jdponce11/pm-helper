@@ -2,6 +2,8 @@ import "dotenv/config";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import express from "express";
+import { pool } from "./db.js";
+import { ensurePhase7Schema } from "./ensureSchema.js";
 import { requireAuth } from "./middleware/auth.js";
 import { authRouter } from "./routes/auth.js";
 import { projectsRouter } from "./routes/projects.js";
@@ -24,6 +26,15 @@ app.use((_req, res) => {
   res.status(404).json({ error: "Not found" });
 });
 
-app.listen(port, "0.0.0.0", () => {
-  console.log(`API listening on ${port}`);
+async function main() {
+  await ensurePhase7Schema();
+  app.listen(port, "0.0.0.0", () => {
+    console.log(`API listening on ${port}`);
+  });
+}
+
+main().catch(async (e) => {
+  console.error(e);
+  await pool.end().catch(() => {});
+  process.exit(1);
 });

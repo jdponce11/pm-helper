@@ -18,6 +18,7 @@ ENV NODE_ENV=production
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY package.json ./
+COPY migrations/007_users_and_ownership.sql ./migrations/007_users_and_ownership.sql
 EXPOSE 5000
 ENV PORT=5000
 CMD ["node", "dist/index.js"]
