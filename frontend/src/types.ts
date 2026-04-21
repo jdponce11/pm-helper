@@ -1,0 +1,85 @@
+export type ActionFlag =
+  | "PASSIVE_MONITOR"
+  | "OPTIMIZATION_NEEDED"
+  | "ACTION_PENDING"
+  | "CRITICAL_BLOCKER";
+
+export type ProjectStatus = "ACTIVE" | "CLOSED";
+
+export interface AuthUser {
+  id: number;
+  email: string;
+  fullName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Project {
+  id: number;
+  parentProjectName: string;
+  finalCustomer: string;
+  country: string;
+  startDate: string;
+  projectId: string;
+  latestUpdate: string | null;
+  nextAction: string | null;
+  nextStepDeadline: string;
+  wholesaleCustomer: string;
+  actionFlag: ActionFlag;
+  status: ProjectStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Archived “Latest update” snapshot (Phase 3) */
+export interface ActivityLogEntry {
+  id: number;
+  projectId: number;
+  timestamp: string;
+  actionFlagSnapshot: ActionFlag | null;
+  note: string;
+  createdBy: string;
+}
+
+export interface ListMeta {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  sortBy: string;
+  sortOrder: string;
+  /** Present when the list is ordered by action-flag priority, then deadline */
+  sort?: "priority";
+}
+
+export const ACTION_FLAGS: ActionFlag[] = [
+  "PASSIVE_MONITOR",
+  "OPTIMIZATION_NEEDED",
+  "ACTION_PENDING",
+  "CRITICAL_BLOCKER",
+];
+
+/** Display / priority order: most urgent first */
+export const ACTION_FLAGS_BY_PRIORITY: ActionFlag[] = [
+  "CRITICAL_BLOCKER",
+  "ACTION_PENDING",
+  "OPTIMIZATION_NEEDED",
+  "PASSIVE_MONITOR",
+];
+
+export function emptyProject(): Omit<Project, "id" | "createdAt" | "updatedAt"> {
+  const today = new Date().toISOString().slice(0, 10);
+  return {
+    parentProjectName: "",
+    finalCustomer: "",
+    country: "",
+    startDate: today,
+    projectId: "",
+    latestUpdate: null,
+    nextAction: null,
+    nextStepDeadline: today,
+    wholesaleCustomer: "",
+    actionFlag: "PASSIVE_MONITOR",
+    status: "ACTIVE",
+  };
+}

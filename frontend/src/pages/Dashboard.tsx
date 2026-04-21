@@ -1,0 +1,55 @@
+import { useCallback, useState } from "react";
+import { useAuth } from "../auth/AuthContext";
+import { ProjectTable } from "../components/ProjectTable";
+import { UrgentBell } from "../components/UrgentBell";
+
+export function Dashboard() {
+  const { user, logout } = useAuth();
+  const [urgentOnly, setUrgentOnly] = useState(false);
+  const [urgentRefreshToken, setUrgentRefreshToken] = useState(0);
+
+  const onPortfolioChanged = useCallback(() => {
+    setUrgentRefreshToken((n) => n + 1);
+  }, []);
+
+  async function onLogout() {
+    await logout();
+  }
+
+  return (
+    <div className="app">
+      <header className="app__header">
+        <div className="app__header__row">
+          <div>
+            <h1>PM Helper</h1>
+            <p className="app__tagline">
+              Project portfolio — priority sorting and inline updates
+            </p>
+            {user ? (
+              <p className="app__user-line">
+                Signed in as <strong>{user.fullName}</strong> ({user.email})
+              </p>
+            ) : null}
+          </div>
+          <div className="app__header__actions">
+            <UrgentBell
+              urgentOnly={urgentOnly}
+              onToggleUrgent={() => setUrgentOnly((v) => !v)}
+              refreshToken={urgentRefreshToken}
+            />
+            <button type="button" className="btn btn--ghost" onClick={() => void onLogout()}>
+              Log out
+            </button>
+          </div>
+        </div>
+      </header>
+      <main className="app__main">
+        <ProjectTable
+          urgentOnly={urgentOnly}
+          onUrgentOnlyChange={setUrgentOnly}
+          onPortfolioChanged={onPortfolioChanged}
+        />
+      </main>
+    </div>
+  );
+}
