@@ -25,6 +25,10 @@ import { ActivityHistoryModal } from "./ActivityHistoryModal";
 import { ProjectFormModal } from "./ProjectFormModal";
 import { useModalBackdropDismiss } from "../useModalBackdropDismiss";
 import {
+  businessDaysOpenFromStart,
+  grillTierFromBusinessDays,
+} from "../businessDaysOpen";
+import {
   datetimeLocalToIso,
   displayDeadline,
   isDateOnlyDeadline,
@@ -35,6 +39,24 @@ import {
 function trunc(s: string | null, n = 56): string {
   if (s == null || s === "") return "—";
   return s.length <= n ? s : `${s.slice(0, n)}…`;
+}
+
+function BusinessDaysGrillCell(props: { project: Project }) {
+  const bd = businessDaysOpenFromStart(props.project.startDate);
+  if (bd === null) {
+    return <span className="muted">—</span>;
+  }
+  const tier = grillTierFromBusinessDays(bd);
+  const closed = props.project.status === "CLOSED";
+  return (
+    <span
+      className={`bd-age bd-age--t${tier}${closed ? " bd-age--closed" : ""}`}
+      title="Business days since project start (Mon–Fri, local calendar)"
+      aria-label={`${bd} business days since project start`}
+    >
+      {bd} bd
+    </span>
+  );
 }
 
 function rowClassName(p: Project): string {
@@ -480,6 +502,14 @@ export function ProjectTable(props: {
         cell: (info) => info.getValue<string>(),
       },
       {
+        id: "businessDaysOpen",
+        header: () => (
+          <abbr title="Business days open (Mon–Fri) since start date">Open (bd)</abbr>
+        ),
+        cell: ({ row }) => <BusinessDaysGrillCell project={row.original} />,
+        enableSorting: false,
+      },
+      {
         accessorKey: "projectId",
         header: "Project ID",
         cell: (info) => (
@@ -694,7 +724,7 @@ export function ProjectTable(props: {
             </button>
           ) : (
             <span className="toolbar__sort-hint">
-              Sorted by action flag priority, then deadline
+              Sorted by action flag priority, then deadline, then start date (older first)
             </span>
           )}
           {urgentOnly || statusTab !== "closed" ? (

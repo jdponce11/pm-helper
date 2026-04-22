@@ -39,6 +39,22 @@ export interface ProjectRow {
   updated_at: string;
 }
 
+/**
+ * Postgres DATE / pg may yield a JS Date or an ISO string with a time part.
+ * Clients (e.g. <input type="date">) need a strict calendar YYYY-MM-DD without
+ * timezone-dependent shifts: use the UTC calendar day for Date instances.
+ */
+function formatStartDateForJson(value: unknown): string {
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return "";
+    return value.toISOString().slice(0, 10);
+  }
+  const s = String(value ?? "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m = /^(\d{4}-\d{2}-\d{2})/.exec(s);
+  return m ? m[1] : "";
+}
+
 export interface ProjectJson {
   id: number;
   parentProjectName: string;
@@ -62,7 +78,7 @@ export function rowToJson(row: ProjectRow): ProjectJson {
     parentProjectName: row.parent_project_name,
     finalCustomer: row.final_customer,
     country: row.country,
-    startDate: row.start_date,
+    startDate: formatStartDateForJson(row.start_date as unknown),
     projectId: row.project_id,
     latestUpdate: row.latest_update,
     nextAction: row.next_action,

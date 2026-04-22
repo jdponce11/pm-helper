@@ -280,7 +280,8 @@ projectsRouter.get("/", async (req, res) => {
             WHEN 'OPTIMIZATION_NEEDED' THEN 2
             WHEN 'PASSIVE_MONITOR' THEN 3
           END ASC,
-          next_step_deadline ASC NULLS LAST`
+          next_step_deadline ASC NULLS LAST,
+          start_date ASC`
       : `ORDER BY ${sortBy} ${sortOrder} NULLS LAST`;
 
     const dataResult = await pool.query<ProjectRow>(

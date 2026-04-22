@@ -12,6 +12,14 @@ import { useModalBackdropDismiss } from "../useModalBackdropDismiss";
 const SUGGESTION_DROPDOWN_MAX = 50;
 const SUGGESTION_IDLE_PREVIEW = 40;
 
+/** API may send DATE as YYYY-MM-DD or as an ISO string; <input type="date"> needs the former. */
+function startDateForDateInput(s: string): string {
+  const v = s.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  const m = /^(\d{4}-\d{2}-\d{2})/.exec(v);
+  return m?.[1] ?? "";
+}
+
 function filterSuggestions(all: string[], typed: string): string[] {
   const t = typed.trim().toLowerCase();
   if (!t) return all.slice(0, SUGGESTION_IDLE_PREVIEW);
@@ -60,7 +68,7 @@ export function ProjectFormModal(props: {
         parentProjectName: p.parentProjectName,
         finalCustomer: p.finalCustomer,
         country: p.country,
-        startDate: p.startDate,
+        startDate: startDateForDateInput(p.startDate) || p.startDate.trim().slice(0, 10),
         projectId: p.projectId,
         latestUpdate: p.latestUpdate,
         nextAction: p.nextAction,
@@ -149,8 +157,11 @@ export function ProjectFormModal(props: {
       setSaving(false);
       return;
     }
+    const startDate =
+      startDateForDateInput(values.startDate) || values.startDate.trim().slice(0, 10);
     const payload = {
       ...values,
+      startDate,
       nextStepDeadline,
       latestUpdate: values.latestUpdate?.trim() || null,
       nextAction: values.nextAction?.trim() || null,
