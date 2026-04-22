@@ -312,6 +312,45 @@ projectsRouter.get("/urgent", async (req, res) => {
   }
 });
 
+/** Distinct trimmed text values per field, deduped case-insensitively (canonical = MIN trim). */
+const SUGGESTIONS_PER_FIELD = 400;
+
+projectsRouter.get("/suggestions", async (req, res) => {
+  const oid = ownerId(req);
+  const baseWhere = `owner_id = $1 AND LENGTH(TRIM($col)) > 0`;
+  const sql = (col: string) =>
+    `SELECT MIN(TRIM(${col})) AS v
+     FROM projects
+     WHERE ${baseWhere.replace("$col", col)}
+     GROUP BY LOWER(TRIM(${col}))
+     ORDER BY LOWER(MIN(TRIM(${col}))) ASC
+     LIMIT ${SUGGESTIONS_PER_FIELD}`;
+
+  try {
+    const [parents, finals, countries, wholesale] = await Promise.all([
+      pool.query<{ v: string }>(sql("parent_project_name"), [oid]),
+      pool.query<{ v: string }>(sql("final_customer"), [oid]),
+      pool.query<{ v: string }>(sql("country"), [oid]),
+      pool.query<{ v: string }>(sql("wholesale_customer"), [oid]),
+    ]);
+
+    res.json({
+      parentProjectNames: parents.rows.map((r) => r.v),
+      finalCustomers: finals.rows.map((r) => r.v),
+      countries: countries.rows.map((r) => r.v),
+      wholesaleCustomers: wholesale.rows.map((r) => r.v),
+      meta: {
+        limitPerField: SUGGESTIONS_PER_FIELD,
+        note:
+          "Distinct non-empty trimmed values from your projects; capped per field. Client may filter while typing.",
+      },
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Failed to load field suggestions" });
+  }
+});
+
 const setStatusBodySchema = z.object({
   status: z.enum(["ACTIVE", "CLOSED"]),
 });

@@ -1,7 +1,17 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
+import { fetchProjectFieldSuggestions } from "../api";
 import type { Project } from "../types";
 import { ACTION_FLAGS, emptyProject } from "../types";
 import { useModalBackdropDismiss } from "../useModalBackdropDismiss";
+
+const SUGGESTION_DROPDOWN_MAX = 50;
+const SUGGESTION_IDLE_PREVIEW = 40;
+
+function filterSuggestions(all: string[], typed: string): string[] {
+  const t = typed.trim().toLowerCase();
+  if (!t) return all.slice(0, SUGGESTION_IDLE_PREVIEW);
+  return all.filter((s) => s.toLowerCase().includes(t)).slice(0, SUGGESTION_DROPDOWN_MAX);
+}
 
 type Mode = "create" | "edit";
 
@@ -22,6 +32,13 @@ export function ProjectFormModal(props: {
   const [values, setValues] = useState(() => emptyProject());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [suggestionLists, setSuggestionLists] = useState<{
+    parentProjectNames: string[];
+    finalCustomers: string[];
+    countries: string[];
+    wholesaleCustomers: string[];
+  }>({ parentProjectNames: [], finalCustomers: [], countries: [], wholesaleCustomers: [] });
+  const listIdBase = useId();
 
   useEffect(() => {
     if (!props.open) return;
@@ -45,6 +62,56 @@ export function ProjectFormModal(props: {
       setValues(emptyProject());
     }
   }, [props.open, props.mode, props.initial]);
+
+  useEffect(() => {
+    if (!props.open) return;
+    let cancelled = false;
+    void fetchProjectFieldSuggestions()
+      .then((data) => {
+        if (cancelled) return;
+        setSuggestionLists({
+          parentProjectNames: data.parentProjectNames,
+          finalCustomers: data.finalCustomers,
+          countries: data.countries,
+          wholesaleCustomers: data.wholesaleCustomers,
+        });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setSuggestionLists({
+          parentProjectNames: [],
+          finalCustomers: [],
+          countries: [],
+          wholesaleCustomers: [],
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [props.open]);
+
+  const parentListId = `${listIdBase}-parent`;
+  const finalListId = `${listIdBase}-final`;
+  const countryListId = `${listIdBase}-country`;
+  const wholesaleListId = `${listIdBase}-wholesale`;
+
+  const parentOptions = useMemo(
+    () => filterSuggestions(suggestionLists.parentProjectNames, values.parentProjectName),
+    [suggestionLists.parentProjectNames, values.parentProjectName]
+  );
+  const finalOptions = useMemo(
+    () => filterSuggestions(suggestionLists.finalCustomers, values.finalCustomer),
+    [suggestionLists.finalCustomers, values.finalCustomer]
+  );
+  const countryOptions = useMemo(
+    () => filterSuggestions(suggestionLists.countries, values.country),
+    [suggestionLists.countries, values.country]
+  );
+  const wholesaleOptions = useMemo(
+    () =>
+      filterSuggestions(suggestionLists.wholesaleCustomers, values.wholesaleCustomer),
+    [suggestionLists.wholesaleCustomers, values.wholesaleCustomer]
+  );
 
   const backdropDismiss = useModalBackdropDismiss(props.onClose);
 
@@ -101,6 +168,26 @@ export function ProjectFormModal(props: {
         </header>
         <form className="modal__body" onSubmit={submit}>
           {error ? <p className="form-error">{error}</p> : null}
+          <datalist id={parentListId}>
+            {parentOptions.map((v) => (
+              <option key={v} value={v} />
+            ))}
+          </datalist>
+          <datalist id={finalListId}>
+            {finalOptions.map((v) => (
+              <option key={v} value={v} />
+            ))}
+          </datalist>
+          <datalist id={countryListId}>
+            {countryOptions.map((v) => (
+              <option key={v} value={v} />
+            ))}
+          </datalist>
+          <datalist id={wholesaleListId}>
+            {wholesaleOptions.map((v) => (
+              <option key={v} value={v} />
+            ))}
+          </datalist>
           <div className="form-grid">
             <label>
               Parent project name *
@@ -108,6 +195,8 @@ export function ProjectFormModal(props: {
                 required
                 value={values.parentProjectName}
                 onChange={(e) => set("parentProjectName", e.target.value)}
+                list={parentListId}
+                autoComplete="off"
               />
             </label>
             <label>
@@ -116,6 +205,8 @@ export function ProjectFormModal(props: {
                 required
                 value={values.finalCustomer}
                 onChange={(e) => set("finalCustomer", e.target.value)}
+                list={finalListId}
+                autoComplete="off"
               />
             </label>
             <label>
@@ -124,6 +215,8 @@ export function ProjectFormModal(props: {
                 required
                 value={values.country}
                 onChange={(e) => set("country", e.target.value)}
+                list={countryListId}
+                autoComplete="off"
               />
             </label>
             <label>
@@ -149,6 +242,8 @@ export function ProjectFormModal(props: {
                 required
                 value={values.wholesaleCustomer}
                 onChange={(e) => set("wholesaleCustomer", e.target.value)}
+                list={wholesaleListId}
+                autoComplete="off"
               />
             </label>
             <label>

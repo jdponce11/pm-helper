@@ -119,6 +119,23 @@ export async function fetchProjects(params: ListParams): Promise<ListResponse> {
   return res.json() as Promise<ListResponse>;
 }
 
+/** Distinct portfolio values for form autocomplete; server caps each array (see meta.limitPerField). */
+export interface ProjectFieldSuggestions {
+  parentProjectNames: string[];
+  finalCustomers: string[];
+  countries: string[];
+  wholesaleCustomers: string[];
+  meta: { limitPerField: number; note?: string };
+}
+
+export async function fetchProjectFieldSuggestions(): Promise<ProjectFieldSuggestions> {
+  const res = await apiFetch("/api/projects/suggestions");
+  if (!res.ok) {
+    throw new Error(await readError(res));
+  }
+  return res.json() as Promise<ProjectFieldSuggestions>;
+}
+
 export async function fetchProject(id: number): Promise<Project> {
   const res = await apiFetch(`/api/projects/${id}`);
   if (!res.ok) throw new Error("Failed to load project");
