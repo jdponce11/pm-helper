@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ActivityLogEntry, Project } from "../types";
 import { fetchActivityLog } from "../api";
+import { useModalBackdropDismiss } from "../useModalBackdropDismiss";
 import { ActionFlagBadge } from "./ActionFlagBadge";
 
 function formatTimestamp(iso: string): string {
@@ -41,12 +42,14 @@ export function ActivityHistoryModal(props: {
       .finally(() => setLoading(false));
   }, [props.open, props.project]);
 
+  const backdropDismiss = useModalBackdropDismiss(props.onClose);
+
   if (!props.open || !props.project) return null;
 
   const title = props.project.projectId;
 
   return (
-    <div className="modal-backdrop" role="presentation" onClick={props.onClose}>
+    <div className="modal-backdrop" role="presentation" {...backdropDismiss}>
       <div
         className="modal modal--history"
         role="dialog"

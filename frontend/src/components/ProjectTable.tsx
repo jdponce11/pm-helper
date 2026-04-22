@@ -23,6 +23,7 @@ import { ACTION_FLAGS, ACTION_FLAGS_BY_PRIORITY } from "../types";
 import { ActionFlagBadge } from "./ActionFlagBadge";
 import { ActivityHistoryModal } from "./ActivityHistoryModal";
 import { ProjectFormModal } from "./ProjectFormModal";
+import { useModalBackdropDismiss } from "../useModalBackdropDismiss";
 
 function trunc(s: string | null, n = 56): string {
   if (s == null || s === "") return "—";
@@ -372,6 +373,12 @@ export function ProjectTable(props: {
     },
     [load, onPortfolioChanged]
   );
+
+  const dismissCloseConfirm = useCallback(() => {
+    if (!statusSaving) setCloseConfirm(null);
+  }, [statusSaving]);
+
+  const closeConfirmBackdropDismiss = useModalBackdropDismiss(dismissCloseConfirm);
 
   const confirmCloseProject = useCallback(async () => {
     if (!closeConfirm) return;
@@ -876,9 +883,7 @@ export function ProjectTable(props: {
         <div
           className="modal-backdrop"
           role="presentation"
-          onClick={() => {
-            if (!statusSaving) setCloseConfirm(null);
-          }}
+          {...closeConfirmBackdropDismiss}
         >
           <div
             className="modal modal--narrow"

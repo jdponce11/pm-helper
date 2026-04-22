@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { Project } from "../types";
 import { ACTION_FLAGS, emptyProject } from "../types";
+import { useModalBackdropDismiss } from "../useModalBackdropDismiss";
 
 type Mode = "create" | "edit";
 
@@ -45,6 +46,8 @@ export function ProjectFormModal(props: {
     }
   }, [props.open, props.mode, props.initial]);
 
+  const backdropDismiss = useModalBackdropDismiss(props.onClose);
+
   if (!props.open) return null;
 
   function set<K extends keyof typeof values>(key: K, v: (typeof values)[K]) {
@@ -76,7 +79,11 @@ export function ProjectFormModal(props: {
   }
 
   return (
-    <div className="modal-backdrop" role="presentation" onClick={props.onClose}>
+    <div
+      className="modal-backdrop"
+      role="presentation"
+      {...backdropDismiss}
+    >
       <div
         className="modal"
         role="dialog"
