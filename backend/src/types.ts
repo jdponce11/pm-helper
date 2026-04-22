@@ -13,6 +13,7 @@ export interface UserRow {
   email: string;
   password_hash: string;
   full_name: string;
+  update_reminder_business_days: number;
   created_at: string;
   updated_at: string;
 }
@@ -35,9 +36,13 @@ export interface ProjectRow {
   wholesale_customer: string;
   action_flag: ActionFlag;
   status: ProjectStatus;
+  last_customer_update_at: string | null;
+  last_crm_update_at: string | null;
   created_at: string;
   updated_at: string;
 }
+
+export type ProjectStaleCounts = { customer: number; crm: number };
 
 /**
  * Postgres DATE / pg may yield a JS Date or an ISO string with a time part.
@@ -70,9 +75,18 @@ export interface ProjectJson {
   status: ProjectStatus;
   createdAt: string;
   updatedAt: string;
+  lastCustomerUpdateAt: string | null;
+  lastCrmUpdateAt: string | null;
+  customerUpdateStale: boolean;
+  crmUpdateStale: boolean;
 }
 
-export function rowToJson(row: ProjectRow): ProjectJson {
+export function rowToJson(row: ProjectRow, stale?: ProjectStaleCounts & { reminderThreshold: number }): ProjectJson {
+  const customerBd = stale?.customer ?? 0;
+  const crmBd = stale?.crm ?? 0;
+  const th = stale?.reminderThreshold ?? 999;
+  const customerUpdateStale = row.status === "ACTIVE" && customerBd >= th;
+  const crmUpdateStale = row.status === "ACTIVE" && crmBd >= th;
   return {
     id: row.id,
     parentProjectName: row.parent_project_name,
@@ -91,6 +105,10 @@ export function rowToJson(row: ProjectRow): ProjectJson {
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    lastCustomerUpdateAt: row.last_customer_update_at ?? null,
+    lastCrmUpdateAt: row.last_crm_update_at ?? null,
+    customerUpdateStale,
+    crmUpdateStale,
   };
 }
 

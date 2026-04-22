@@ -268,15 +268,42 @@ function InlineDeadlineCell(props: {
 
 const defaultPageSize = 25;
 
+function UpdateCadenceDots(props: { project: Project }) {
+  const { project: p } = props;
+  return (
+    <span className="update-cadence-dots" aria-label="Update cadence status">
+      <span
+        className={`update-cadence-dot update-cadence-dot--customer${p.customerUpdateStale ? " update-cadence-dot--stale" : ""}`}
+        title={
+          p.customerUpdateStale
+            ? "Customer status update is overdue (vs your threshold)"
+            : "Customer status update is within threshold"
+        }
+      />
+      <span
+        className={`update-cadence-dot update-cadence-dot--crm${p.crmUpdateStale ? " update-cadence-dot--stale" : ""}`}
+        title={
+          p.crmUpdateStale
+            ? "CRM delivery update is overdue (vs your threshold)"
+            : "CRM delivery update is within threshold"
+        }
+      />
+    </span>
+  );
+}
+
 export function ProjectTable(props: {
   urgentOnly?: boolean;
   onUrgentOnlyChange?: (value: boolean) => void;
   onPortfolioChanged?: () => void;
+  /** Bump after cadence settings change to refetch list with new staleness */
+  listRefreshToken?: number;
 }) {
   const {
     urgentOnly = false,
     onUrgentOnlyChange,
     onPortfolioChanged,
+    listRefreshToken = 0,
   } = props;
 
   const [rows, setRows] = useState<Project[]>([]);
@@ -384,6 +411,7 @@ export function ProjectTable(props: {
     wholesaleFilter,
     urgentOnly,
     listStatus,
+    listRefreshToken,
   ]);
 
   useEffect(() => {
@@ -558,15 +586,18 @@ export function ProjectTable(props: {
         accessorKey: "actionFlag",
         header: "Action flag",
         cell: ({ row }) => (
-          <InlineActionFlagCell
-            project={row.original}
-            readOnly={row.original.status === "CLOSED"}
-            saving={
-              inlineSaving?.id === row.original.id &&
-              inlineSaving.field === "actionFlag"
-            }
-            onSave={(id, patch) => handlePatch(id, patch, "actionFlag")}
-          />
+          <div className="flag-cell">
+            <UpdateCadenceDots project={row.original} />
+            <InlineActionFlagCell
+              project={row.original}
+              readOnly={row.original.status === "CLOSED"}
+              saving={
+                inlineSaving?.id === row.original.id &&
+                inlineSaving.field === "actionFlag"
+              }
+              onSave={(id, patch) => handlePatch(id, patch, "actionFlag")}
+            />
+          </div>
         ),
       },
       {

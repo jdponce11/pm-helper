@@ -1,16 +1,25 @@
 import { useCallback, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { ProjectTable } from "../components/ProjectTable";
+import { SettingsModal } from "../components/SettingsModal";
 import { UrgentBell } from "../components/UrgentBell";
 
 export function Dashboard() {
-  const { user, logout } = useAuth();
+  const { user, logout, refresh } = useAuth();
   const [urgentOnly, setUrgentOnly] = useState(false);
   const [urgentRefreshToken, setUrgentRefreshToken] = useState(0);
+  const [listRefreshToken, setListRefreshToken] = useState(0);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const onPortfolioChanged = useCallback(() => {
     setUrgentRefreshToken((n) => n + 1);
   }, []);
+
+  const onCadenceSettingsSaved = useCallback(() => {
+    void refresh();
+    setListRefreshToken((n) => n + 1);
+    setUrgentRefreshToken((n) => n + 1);
+  }, [refresh]);
 
   async function onLogout() {
     await logout();
@@ -37,6 +46,9 @@ export function Dashboard() {
               onToggleUrgent={() => setUrgentOnly((v) => !v)}
               refreshToken={urgentRefreshToken}
             />
+            <button type="button" className="btn btn--ghost" onClick={() => setSettingsOpen(true)}>
+              Settings
+            </button>
             <button type="button" className="btn btn--ghost" onClick={() => void onLogout()}>
               Log out
             </button>
@@ -48,8 +60,14 @@ export function Dashboard() {
           urgentOnly={urgentOnly}
           onUrgentOnlyChange={setUrgentOnly}
           onPortfolioChanged={onPortfolioChanged}
+          listRefreshToken={listRefreshToken}
         />
       </main>
+      <SettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onSaved={onCadenceSettingsSaved}
+      />
     </div>
   );
 }

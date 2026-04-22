@@ -3,9 +3,14 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import express from "express";
 import { pool } from "./db.js";
-import { ensureNextStepDeadlineSchema, ensurePhase7Schema } from "./ensureSchema.js";
+import {
+  ensureNextStepDeadlineSchema,
+  ensurePhase7Schema,
+  ensureUpdateCadenceSchema,
+} from "./ensureSchema.js";
 import { requireAuth } from "./middleware/auth.js";
 import { authRouter } from "./routes/auth.js";
+import { meRouter } from "./routes/me.js";
 import { projectsRouter } from "./routes/projects.js";
 
 const app = express();
@@ -20,6 +25,7 @@ app.get("/health", (_req, res) => {
 });
 
 app.use("/api/auth", authRouter);
+app.use("/api/me", requireAuth, meRouter);
 app.use("/api/projects", requireAuth, projectsRouter);
 
 app.use((_req, res) => {
@@ -29,6 +35,7 @@ app.use((_req, res) => {
 async function main() {
   await ensurePhase7Schema();
   await ensureNextStepDeadlineSchema();
+  await ensureUpdateCadenceSchema();
   app.listen(port, "0.0.0.0", () => {
     console.log(`API listening on ${port}`);
   });

@@ -37,7 +37,7 @@ authRouter.post("/register", async (req, res) => {
     const inserted = await pool.query<SafeUserRow>(
       `INSERT INTO users (email, password_hash, full_name)
        VALUES ($1, $2, $3)
-       RETURNING id, email, full_name, created_at, updated_at`,
+       RETURNING id, email, full_name, update_reminder_business_days, created_at, updated_at`,
       [email.toLowerCase(), passwordHash, fullName]
     );
     const user = inserted.rows[0];
@@ -52,6 +52,7 @@ authRouter.post("/register", async (req, res) => {
         id: user.id,
         email: user.email,
         fullName: user.full_name,
+        updateReminderBusinessDays: user.update_reminder_business_days,
         createdAt: user.created_at,
         updatedAt: user.updated_at,
       },
@@ -95,6 +96,7 @@ authRouter.post("/login", async (req, res) => {
         id: user.id,
         email: user.email,
         fullName: user.full_name,
+        updateReminderBusinessDays: user.update_reminder_business_days,
         createdAt: user.created_at,
         updatedAt: user.updated_at,
       },
@@ -125,7 +127,7 @@ authRouter.get("/me", async (req, res) => {
       return;
     }
     const result = await pool.query<SafeUserRow>(
-      `SELECT id, email, full_name, created_at, updated_at FROM users WHERE id = $1`,
+      `SELECT id, email, full_name, update_reminder_business_days, created_at, updated_at FROM users WHERE id = $1`,
       [session.id]
     );
     const user = result.rows[0];
@@ -138,6 +140,7 @@ authRouter.get("/me", async (req, res) => {
         id: user.id,
         email: user.email,
         fullName: user.full_name,
+        updateReminderBusinessDays: user.update_reminder_business_days,
         createdAt: user.created_at,
         updatedAt: user.updated_at,
       },

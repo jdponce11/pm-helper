@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
-import { fetchProjectFieldSuggestions } from "../api";
+import { fetchMeSettings, fetchProjectFieldSuggestions, type ProjectWriteBody } from "../api";
 import {
   datetimeLocalToIso,
   isDateOnlyDeadline,
@@ -8,6 +8,7 @@ import {
 import type { Project } from "../types";
 import { ACTION_FLAGS, emptyProject } from "../types";
 import { useModalBackdropDismiss } from "../useModalBackdropDismiss";
+import { formatLastUpdateCadenceLine } from "../updateCadenceDisplay";
 
 const SUGGESTION_DROPDOWN_MAX = 50;
 const SUGGESTION_IDLE_PREVIEW = 40;
@@ -34,13 +35,8 @@ export function ProjectFormModal(props: {
   initial: Project | null;
   onClose: () => void;
   onSaved: () => void;
-  createProject: (
-    body: Omit<Project, "id" | "createdAt" | "updatedAt">
-  ) => Promise<Project>;
-  updateProject: (
-    id: number,
-    body: Omit<Project, "id" | "createdAt" | "updatedAt">
-  ) => Promise<Project>;
+  createProject: (body: ProjectWriteBody) => Promise<Project>;
+  updateProject: (id: number, body: ProjectWriteBody) => Promise<Project>;
 }) {
   const [values, setValues] = useState(() => emptyProject());
   /** Date-only uses YYYY-MM-DD; date+time uses datetime-local then ISO on submit. */
@@ -48,6 +44,9 @@ export function ProjectFormModal(props: {
   const [deadlineDatetimeLocal, setDeadlineDatetimeLocal] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [markCustomerToday, setMarkCustomerToday] = useState(false);
+  const [markCrmToday, setMarkCrmToday] = useState(false);
+  const [urgencyTimezone, setUrgencyTimezone] = useState("UTC");
   const [suggestionLists, setSuggestionLists] = useState<{
     parentProjectNames: string[];
     finalCustomers: string[];
@@ -59,6 +58,11 @@ export function ProjectFormModal(props: {
   useEffect(() => {
     if (!props.open) return;
     setError(null);
+    setMarkCustomerToday(false);
+    setMarkCrmToday(false);
+    void fetchMeSettings()
+      .then((s) => setUrgencyTimezone(s.urgencyTimezone))
+      .catch(() => setUrgencyTimezone("UTC"));
     if (props.mode === "edit" && props.initial) {
       const p = props.initial;
       const dtMode = !isDateOnlyDeadline(p.nextStepDeadline);
@@ -76,6 +80,10 @@ export function ProjectFormModal(props: {
         wholesaleCustomer: p.wholesaleCustomer,
         actionFlag: p.actionFlag,
         status: p.status,
+        lastCustomerUpdateAt: p.lastCustomerUpdateAt,
+        lastCrmUpdateAt: p.lastCrmUpdateAt,
+        customerUpdateStale: p.customerUpdateStale,
+        crmUpdateStale: p.crmUpdateStale,
       });
     } else {
       setDeadlineMode("date");
@@ -159,12 +167,14 @@ export function ProjectFormModal(props: {
     }
     const startDate =
       startDateForDateInput(values.startDate) || values.startDate.trim().slice(0, 10);
-    const payload = {
+    const payload: ProjectWriteBody = {
       ...values,
       startDate,
       nextStepDeadline,
       latestUpdate: values.latestUpdate?.trim() || null,
       nextAction: values.nextAction?.trim() || null,
+      ...(markCustomerToday ? { markCustomerUpdated: true } : {}),
+      ...(markCrmToday ? { markCrmUpdated: true } : {}),
     };
     try {
       if (props.mode === "create") {
@@ -373,6 +383,49 @@ export function ProjectFormModal(props: {
                 onChange={(e) => set("nextAction", e.target.value || null)}
               />
             </label>
+            <div className="form-grid__full update-cadence-box">
+              <p className="update-cadence-box__title">PM update cadence</p>
+              <label className="update-cadence-check">
+                <input
+                  type="checkbox"
+                  checked={markCustomerToday}
+                  onChange={(e) => setMarkCustomerToday(e.target.checked)}
+                />
+                <span>
+                  I sent a customer update today
+                  <span className="update-cadence-check__hint muted">
+                    {" "}
+                    Last:{" "}
+                    {formatLastUpdateCadenceLine(
+                      props.mode === "edit" && props.initial
+                        ? props.initial.lastCustomerUpdateAt
+                        : values.lastCustomerUpdateAt,
+                      urgencyTimezone
+                    )}
+                  </span>
+                </span>
+              </label>
+              <label className="update-cadence-check">
+                <input
+                  type="checkbox"
+                  checked={markCrmToday}
+                  onChange={(e) => setMarkCrmToday(e.target.checked)}
+                />
+                <span>
+                  I updated the CRM delivery system today
+                  <span className="update-cadence-check__hint muted">
+                    {" "}
+                    Last:{" "}
+                    {formatLastUpdateCadenceLine(
+                      props.mode === "edit" && props.initial
+                        ? props.initial.lastCrmUpdateAt
+                        : values.lastCrmUpdateAt,
+                      urgencyTimezone
+                    )}
+                  </span>
+                </span>
+              </label>
+            </div>
           </div>
           <footer className="modal__footer">
             <button type="button" className="btn btn--ghost" onClick={props.onClose}>

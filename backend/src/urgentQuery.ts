@@ -48,3 +48,44 @@ export function appendUrgentConditions(
   conditions.push(`action_flag <> 'PASSIVE_MONITOR'::action_flag_enum`);
   return p;
 }
+
+const staleOrderSql = `ORDER BY
+  CASE action_flag::text
+    WHEN 'CRITICAL_BLOCKER' THEN 0
+    WHEN 'ACTION_PENDING' THEN 1
+    WHEN 'OPTIMIZATION_NEEDED' THEN 2
+    WHEN 'PASSIVE_MONITOR' THEN 3
+  END ASC,
+  next_step_deadline ASC NULLS LAST,
+  start_date ASC`;
+
+/**
+ * Active projects stale on customer updates or CRM updates vs `thresholdBusinessDays`
+ * (weekdays in (anchor_date, today] in URGENCY_TIMEZONE). Distinct from queryUrgentProjects.
+ */
+export async function queryStaleUpdateProjects(
+  pool: Pool,
+  ownerId: number,
+  thresholdBusinessDays: number
+): Promise<{ customerStale: ProjectRow[]; crmStale: ProjectRow[] }> {
+  const tz = getUrgencyTimezone();
+  const [customer, crm] = await Promise.all([
+    pool.query<ProjectRow>(
+      `SELECT * FROM projects
+       WHERE owner_id = $1
+         AND status = 'ACTIVE'::project_status_enum
+         AND pm_business_weekdays_after(COALESCE(last_customer_update_at, created_at), $2::text) >= $3
+       ${staleOrderSql}`,
+      [ownerId, tz, thresholdBusinessDays]
+    ),
+    pool.query<ProjectRow>(
+      `SELECT * FROM projects
+       WHERE owner_id = $1
+         AND status = 'ACTIVE'::project_status_enum
+         AND pm_business_weekdays_after(COALESCE(last_crm_update_at, created_at), $2::text) >= $3
+       ${staleOrderSql}`,
+      [ownerId, tz, thresholdBusinessDays]
+    ),
+  ]);
+  return { customerStale: customer.rows, crmStale: crm.rows };
+}

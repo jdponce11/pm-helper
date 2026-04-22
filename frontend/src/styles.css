@@ -186,6 +186,51 @@ body {
   color: var(--muted);
 }
 
+.urgent-bell-wrap {
+  position: relative;
+}
+
+.urgent-bell__popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 40;
+  min-width: min(360px, 92vw);
+  max-height: min(70vh, 480px);
+  overflow: auto;
+  padding: 0.65rem 0.85rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+  font-size: 0.82rem;
+}
+
+.urgent-bell__popover-actions {
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.urgent-bell__sub {
+  margin: 0.5rem 0 0.25rem;
+  font-size: 0.72rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.urgent-bell__list {
+  margin: 0 0 0.35rem;
+  padding-left: 1.1rem;
+}
+
+.urgent-bell__popover-empty {
+  margin: 0 0 0.35rem;
+  font-size: 0.8rem;
+}
+
 .toolbar__urgent-banner {
   display: flex;
   flex-wrap: wrap;
@@ -601,6 +646,84 @@ textarea:focus {
 .badge--critical {
   background: rgba(228, 0, 43, 0.22);
   color: var(--accent);
+}
+
+.flag-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.update-cadence-dots {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.update-cadence-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  background: transparent;
+}
+
+.update-cadence-dot--customer.update-cadence-dot--stale {
+  border-color: var(--tigo-blue-bright);
+  background: rgba(0, 102, 204, 0.55);
+}
+
+.update-cadence-dot--crm.update-cadence-dot--stale {
+  border-color: #b8860b;
+  background: rgba(255, 204, 0, 0.55);
+}
+
+.update-cadence-box {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.65rem 0.75rem;
+  background: var(--surface-2);
+}
+
+.update-cadence-box__title {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 650;
+  color: var(--muted);
+}
+
+.update-cadence-check {
+  display: flex;
+  gap: 0.45rem;
+  align-items: flex-start;
+  margin-bottom: 0.45rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.update-cadence-check:last-of-type {
+  margin-bottom: 0;
+}
+
+.update-cadence-check input {
+  margin-top: 0.2rem;
+}
+
+.update-cadence-check__hint {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.78rem;
+}
+
+.settings-tz-hint {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.settings-tz-hint code {
+  font-size: 0.78rem;
 }
 
 .pager {

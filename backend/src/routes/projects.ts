@@ -3,11 +3,17 @@ import type { Request } from "express";
 import { Router } from "express";
 import { z } from "zod";
 import { pool } from "../db.js";
-import { appendUrgentConditions, queryUrgentProjects } from "../urgentQuery.js";
+import {
+  appendUrgentConditions,
+  queryStaleUpdateProjects,
+  queryUrgentProjects,
+} from "../urgentQuery.js";
+import { fetchProjectStaleBusinessDayCounts, fetchUserReminderThreshold } from "../projectStaleCounts.js";
 import {
   nextStepDeadlineFieldSchema,
   resolveNextStepDeadlineForDb,
 } from "../nextStepDeadline.js";
+import { getUrgencyTimezone } from "../urgencyTimezone.js";
 import type { ActionFlag, ActivityLogRow, ProjectRow, ProjectStatus } from "../types.js";
 import { activityLogRowToJson, rowToJson } from "../types.js";
 
@@ -33,10 +39,17 @@ const projectBodySchema = z.object({
   nextStepDeadline: nextStepDeadlineFieldSchema,
   wholesaleCustomer: z.string().min(1),
   actionFlag: actionFlagSchema,
+  markCustomerUpdated: z.boolean().optional(),
+  markCrmUpdated: z.boolean().optional(),
 });
 
 const patchBodySchema = projectBodySchema.partial().refine(
-  (obj) => Object.keys(obj).length > 0,
+  (obj) => {
+    const keys = Object.keys(obj);
+    if (keys.length === 0) return false;
+    if (obj.markCustomerUpdated === true || obj.markCrmUpdated === true) return true;
+    return keys.some((k) => k !== "markCustomerUpdated" && k !== "markCrmUpdated");
+  },
   { message: "At least one field is required" }
 );
 
@@ -123,6 +136,20 @@ async function insertLatestUpdateArchive(
   );
 }
 
+async function insertUserActivityLog(
+  client: PoolClient,
+  projectId: number,
+  actionFlagSnapshot: ActionFlag,
+  note: string,
+  createdBy: string
+): Promise<void> {
+  await client.query(
+    `INSERT INTO activity_log (project_id, action_flag_snapshot, note, created_by)
+     VALUES ($1, $2::action_flag_enum, $3, $4)`,
+    [projectId, actionFlagSnapshot, note, createdBy]
+  );
+}
+
 export const projectsRouter = Router();
 
 function ownerId(req: Request): number {
@@ -136,32 +163,78 @@ projectsRouter.post("/", async (req, res) => {
     return;
   }
   const b = parsed.data;
+  const markCustomer = b.markCustomerUpdated === true;
+  const markCrm = b.markCrmUpdated === true;
+  const createdBy = req.user!.email;
   try {
     const deadline = await resolveNextStepDeadlineForDb(pool, b.nextStepDeadline);
-    const rows = await pool.query<ProjectRow>(
-      `INSERT INTO projects (
-        owner_id,
-        parent_project_name, final_customer, country, start_date, project_id,
-        latest_update, next_action, next_step_deadline, next_step_deadline_has_time,
-        wholesale_customer, action_flag
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::action_flag_enum)
-      RETURNING *`,
-      [
-        ownerId(req),
-        b.parentProjectName,
-        b.finalCustomer,
-        b.country,
-        b.startDate,
-        b.projectId,
-        b.latestUpdate ?? null,
-        b.nextAction ?? null,
-        deadline.ts,
-        deadline.includesTime,
-        b.wholesaleCustomer,
-        b.actionFlag as ActionFlag,
-      ]
-    );
-    res.status(201).json(rowToJson(rows.rows[0]));
+    const client = await pool.connect();
+    let inserted: ProjectRow;
+    try {
+      await client.query("BEGIN");
+      const rows = await client.query<ProjectRow>(
+        `INSERT INTO projects (
+          owner_id,
+          parent_project_name, final_customer, country, start_date, project_id,
+          latest_update, next_action, next_step_deadline, next_step_deadline_has_time,
+          wholesale_customer, action_flag,
+          last_customer_update_at, last_crm_update_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::action_flag_enum,
+          CASE WHEN $13 THEN NOW() ELSE NULL END,
+          CASE WHEN $14 THEN NOW() ELSE NULL END
+        )
+        RETURNING *`,
+        [
+          ownerId(req),
+          b.parentProjectName,
+          b.finalCustomer,
+          b.country,
+          b.startDate,
+          b.projectId,
+          b.latestUpdate ?? null,
+          b.nextAction ?? null,
+          deadline.ts,
+          deadline.includesTime,
+          b.wholesaleCustomer,
+          b.actionFlag as ActionFlag,
+          markCustomer,
+          markCrm,
+        ]
+      );
+      inserted = rows.rows[0];
+      if (markCustomer) {
+        await insertUserActivityLog(
+          client,
+          inserted.id,
+          inserted.action_flag,
+          "Customer update sent",
+          createdBy
+        );
+      }
+      if (markCrm) {
+        await insertUserActivityLog(
+          client,
+          inserted.id,
+          inserted.action_flag,
+          "CRM delivery system updated",
+          createdBy
+        );
+      }
+      await client.query("COMMIT");
+    } catch (e) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {
+        /* ignore */
+      }
+      throw e;
+    } finally {
+      client.release();
+    }
+    const th = await fetchUserReminderThreshold(pool, ownerId(req));
+    const staleMap = await fetchProjectStaleBusinessDayCounts(pool, [inserted.id]);
+    const c = staleMap.get(inserted.id) ?? { customer: 0, crm: 0 };
+    res.status(201).json(rowToJson(inserted, { ...c, reminderThreshold: th }));
   } catch (e: unknown) {
     const err = e as { code?: string };
     if (err.code === "23505") {
@@ -261,6 +334,7 @@ projectsRouter.get("/", async (req, res) => {
   const whereSql = conditions.join(" AND ");
 
   try {
+    const reminderThreshold = await fetchUserReminderThreshold(pool, ownerId(req));
     const countResult = await pool.query<{ c: string }>(
       `SELECT COUNT(*)::text AS c FROM projects WHERE ${whereSql}`,
       params
@@ -291,8 +365,16 @@ projectsRouter.get("/", async (req, res) => {
       listParams
     );
 
+    const staleMap = await fetchProjectStaleBusinessDayCounts(
+      pool,
+      dataResult.rows.map((r) => r.id)
+    );
+
     res.json({
-      data: dataResult.rows.map(rowToJson),
+      data: dataResult.rows.map((row) => {
+        const c = staleMap.get(row.id) ?? { customer: 0, crm: 0 };
+        return rowToJson(row, { ...c, reminderThreshold });
+      }),
       meta: {
         total,
         page,
@@ -312,11 +394,44 @@ projectsRouter.get("/", async (req, res) => {
 projectsRouter.get("/urgent", async (req, res) => {
   try {
     const rows = await queryUrgentProjects(pool, ownerId(req));
-    const data = rows.map(rowToJson);
+    const reminderThreshold = await fetchUserReminderThreshold(pool, ownerId(req));
+    const staleMap = await fetchProjectStaleBusinessDayCounts(
+      pool,
+      rows.map((r) => r.id)
+    );
+    const data = rows.map((row) => {
+      const c = staleMap.get(row.id) ?? { customer: 0, crm: 0 };
+      return rowToJson(row, { ...c, reminderThreshold });
+    });
     res.json({ count: data.length, data });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Failed to load urgent projects" });
+  }
+});
+
+projectsRouter.get("/reminders", async (req, res) => {
+  try {
+    const reminderThreshold = await fetchUserReminderThreshold(pool, ownerId(req));
+    const { customerStale, crmStale } = await queryStaleUpdateProjects(
+      pool,
+      ownerId(req),
+      reminderThreshold
+    );
+    const ids = [...new Set([...customerStale, ...crmStale].map((r) => r.id))];
+    const staleMap = await fetchProjectStaleBusinessDayCounts(pool, ids);
+    const pack = (row: ProjectRow) => {
+      const c = staleMap.get(row.id) ?? { customer: 0, crm: 0 };
+      return rowToJson(row, { ...c, reminderThreshold });
+    };
+    res.json({
+      urgencyTimezone: getUrgencyTimezone(),
+      customerStale: { count: customerStale.length, data: customerStale.map(pack) },
+      crmStale: { count: crmStale.length, data: crmStale.map(pack) },
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Failed to load update reminders" });
   }
 });
 
@@ -391,7 +506,10 @@ projectsRouter.patch("/:id/status", async (req, res) => {
     const current = lock.rows[0];
     if (current.status === nextStatus) {
       await client.query("COMMIT");
-      res.json(rowToJson(current));
+      const reminderThreshold = await fetchUserReminderThreshold(pool, ownerId(req));
+      const staleMap = await fetchProjectStaleBusinessDayCounts(pool, [current.id]);
+      const c = staleMap.get(current.id) ?? { customer: 0, crm: 0 };
+      res.json(rowToJson(current, { ...c, reminderThreshold }));
       return;
     }
 
@@ -418,7 +536,10 @@ projectsRouter.patch("/:id/status", async (req, res) => {
     }
 
     await client.query("COMMIT");
-    res.json(rowToJson(updated));
+    const reminderThreshold = await fetchUserReminderThreshold(pool, ownerId(req));
+    const staleMap = await fetchProjectStaleBusinessDayCounts(pool, [updated.id]);
+    const c = staleMap.get(updated.id) ?? { customer: 0, crm: 0 };
+    res.json(rowToJson(updated, { ...c, reminderThreshold }));
   } catch (e) {
     try {
       await client.query("ROLLBACK");
@@ -476,7 +597,11 @@ projectsRouter.get("/:id", async (req, res) => {
       res.status(404).json({ error: "Not found" });
       return;
     }
-    res.json(rowToJson(result.rows[0]));
+    const row = result.rows[0];
+    const reminderThreshold = await fetchUserReminderThreshold(pool, ownerId(req));
+    const staleMap = await fetchProjectStaleBusinessDayCounts(pool, [row.id]);
+    const c = staleMap.get(row.id) ?? { customer: 0, crm: 0 };
+    res.json(rowToJson(row, { ...c, reminderThreshold }));
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Failed to load project" });
@@ -529,6 +654,13 @@ projectsRouter.patch("/:id", async (req, res) => {
     n++;
   }
 
+  if (b.markCustomerUpdated === true) {
+    assignments.push(`last_customer_update_at = NOW()`);
+  }
+  if (b.markCrmUpdated === true) {
+    assignments.push(`last_crm_update_at = NOW()`);
+  }
+
   if (assignments.length === 0) {
     res.status(400).json({ error: "At least one field is required" });
     return;
@@ -575,8 +707,31 @@ projectsRouter.patch("/:id", async (req, res) => {
        RETURNING *`,
       values
     );
+    const updated = result.rows[0];
+    const createdBy = req.user!.email;
+    if (b.markCustomerUpdated === true) {
+      await insertUserActivityLog(
+        client,
+        id,
+        updated.action_flag,
+        "Customer update sent",
+        createdBy
+      );
+    }
+    if (b.markCrmUpdated === true) {
+      await insertUserActivityLog(
+        client,
+        id,
+        updated.action_flag,
+        "CRM delivery system updated",
+        createdBy
+      );
+    }
     await client.query("COMMIT");
-    res.json(rowToJson(result.rows[0]));
+    const reminderThreshold = await fetchUserReminderThreshold(pool, ownerId(req));
+    const staleMap = await fetchProjectStaleBusinessDayCounts(pool, [updated.id]);
+    const c = staleMap.get(updated.id) ?? { customer: 0, crm: 0 };
+    res.json(rowToJson(updated, { ...c, reminderThreshold }));
   } catch (e: unknown) {
     try {
       await client.query("ROLLBACK");
@@ -607,6 +762,8 @@ projectsRouter.put("/:id", async (req, res) => {
     return;
   }
   const b = parsed.data;
+  const markCustomer = b.markCustomerUpdated === true;
+  const markCrm = b.markCrmUpdated === true;
   const newLatest = b.latestUpdate ?? null;
   const deadline = await resolveNextStepDeadlineForDb(pool, b.nextStepDeadline);
 
@@ -651,8 +808,10 @@ projectsRouter.put("/:id", async (req, res) => {
         next_step_deadline = $8,
         next_step_deadline_has_time = $9,
         wholesale_customer = $10,
-        action_flag = $11::action_flag_enum
-      WHERE id = $12
+        action_flag = $11::action_flag_enum,
+        last_customer_update_at = CASE WHEN $12 THEN NOW() ELSE last_customer_update_at END,
+        last_crm_update_at = CASE WHEN $13 THEN NOW() ELSE last_crm_update_at END
+      WHERE id = $14
       RETURNING *`,
       [
         b.parentProjectName,
@@ -666,11 +825,36 @@ projectsRouter.put("/:id", async (req, res) => {
         deadline.includesTime,
         b.wholesaleCustomer,
         b.actionFlag as ActionFlag,
+        markCustomer,
+        markCrm,
         id,
       ]
     );
+    const updated = result.rows[0];
+    const createdBy = req.user!.email;
+    if (markCustomer) {
+      await insertUserActivityLog(
+        client,
+        id,
+        updated.action_flag,
+        "Customer update sent",
+        createdBy
+      );
+    }
+    if (markCrm) {
+      await insertUserActivityLog(
+        client,
+        id,
+        updated.action_flag,
+        "CRM delivery system updated",
+        createdBy
+      );
+    }
     await client.query("COMMIT");
-    res.json(rowToJson(result.rows[0]));
+    const reminderThreshold = await fetchUserReminderThreshold(pool, ownerId(req));
+    const staleMap = await fetchProjectStaleBusinessDayCounts(pool, [updated.id]);
+    const c = staleMap.get(updated.id) ?? { customer: 0, crm: 0 };
+    res.json(rowToJson(updated, { ...c, reminderThreshold }));
   } catch (e: unknown) {
     try {
       await client.query("ROLLBACK");

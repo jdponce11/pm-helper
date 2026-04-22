@@ -110,6 +110,41 @@ export async function fetchUrgentSummary(): Promise<{
   return res.json() as Promise<{ count: number; data: Project[] }>;
 }
 
+export interface MeSettings {
+  updateReminderBusinessDays: number;
+  urgencyTimezone: string;
+}
+
+export async function fetchMeSettings(): Promise<MeSettings> {
+  const res = await apiFetch("/api/me/settings");
+  if (!res.ok) throw new Error(await readError(res));
+  return res.json() as Promise<MeSettings>;
+}
+
+export async function patchMeSettings(
+  body: Pick<MeSettings, "updateReminderBusinessDays">
+): Promise<MeSettings> {
+  const res = await apiFetch("/api/me/settings", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  return res.json() as Promise<MeSettings>;
+}
+
+export interface UpdateRemindersResponse {
+  urgencyTimezone: string;
+  customerStale: { count: number; data: Project[] };
+  crmStale: { count: number; data: Project[] };
+}
+
+export async function fetchUpdateReminders(): Promise<UpdateRemindersResponse> {
+  const res = await apiFetch("/api/projects/reminders");
+  if (!res.ok) throw new Error(await readError(res));
+  return res.json() as Promise<UpdateRemindersResponse>;
+}
+
 export async function fetchProjects(params: ListParams): Promise<ListResponse> {
   const qs = buildQuery(params);
   const res = await apiFetch(`/api/projects?${qs}`);
@@ -151,10 +186,25 @@ export async function fetchActivityLog(projectId: number): Promise<ActivityLogEn
   return body.data;
 }
 
-export async function createProject(
-  body: Omit<Project, "id" | "createdAt" | "updatedAt">
-): Promise<Project> {
-  const { status: _status, ...payload } = body;
+export type ProjectWriteBody = Omit<Project, "id" | "createdAt" | "updatedAt"> & {
+  markCustomerUpdated?: boolean;
+  markCrmUpdated?: boolean;
+};
+
+function stripReadOnlyProjectFields(body: ProjectWriteBody): Record<string, unknown> {
+  const {
+    status: _s,
+    lastCustomerUpdateAt: _lc,
+    lastCrmUpdateAt: _lr,
+    customerUpdateStale: _cs,
+    crmUpdateStale: _cr,
+    ...payload
+  } = body;
+  return payload;
+}
+
+export async function createProject(body: ProjectWriteBody): Promise<Project> {
+  const payload = stripReadOnlyProjectFields(body);
   const res = await apiFetch("/api/projects", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -166,11 +216,8 @@ export async function createProject(
   return res.json() as Promise<Project>;
 }
 
-export async function updateProject(
-  id: number,
-  body: Omit<Project, "id" | "createdAt" | "updatedAt">
-): Promise<Project> {
-  const { status: _status, ...payload } = body;
+export async function updateProject(id: number, body: ProjectWriteBody): Promise<Project> {
+  const payload = stripReadOnlyProjectFields(body);
   const res = await apiFetch(`/api/projects/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -182,10 +229,14 @@ export async function updateProject(
   return res.json() as Promise<Project>;
 }
 
-export type ProjectPatch = Partial<Omit<Project, "id" | "createdAt" | "updatedAt">>;
+export type ProjectPatch = Partial<Omit<Project, "id" | "createdAt" | "updatedAt">> & {
+  markCustomerUpdated?: boolean;
+  markCrmUpdated?: boolean;
+};
 
 export async function patchProject(id: number, body: ProjectPatch): Promise<Project> {
-  const { status: _s, ...rest } = body;
+  const { status: _s, lastCustomerUpdateAt: _lc, lastCrmUpdateAt: _lr, customerUpdateStale: _cs, crmUpdateStale: _cr, ...rest } =
+    body;
   const res = await apiFetch(`/api/projects/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },

@@ -92,3 +92,107 @@ export async function ensureNextStepDeadlineSchema(): Promise<void> {
   `);
   console.log("[schema] next_step_deadline column migration applied.");
 }
+
+const PM_BUSINESS_WEEKDAYS_AFTER_SQL = `
+CREATE OR REPLACE FUNCTION pm_business_weekdays_after(anchor timestamptz, tz text)
+RETURNS integer
+LANGUAGE plpgsql
+STABLE
+AS $$
+DECLARE
+  d_start date;
+  d_end date;
+  i int;
+  n int := 0;
+  d date;
+BEGIN
+  d_start := (anchor AT TIME ZONE tz)::date;
+  d_end := (CURRENT_TIMESTAMP AT TIME ZONE tz)::date;
+  IF d_end <= d_start THEN
+    RETURN 0;
+  END IF;
+  FOR i IN 1..(d_end - d_start) LOOP
+    d := d_start + i;
+    IF EXTRACT(ISODOW FROM d) <= 5 THEN
+      n := n + 1;
+    END IF;
+  END LOOP;
+  RETURN n;
+END;
+$$;
+`;
+
+/**
+ * Older volumes: customer/CRM update timestamps, per-user reminder threshold, and business-day helper.
+ */
+export async function ensureUpdateCadenceSchema(): Promise<void> {
+  const usersTbl = await pool.query<{ exists: boolean }>(
+    `SELECT EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = 'users'
+    ) AS exists`
+  );
+  if (!usersTbl.rows[0]?.exists) return;
+
+  const hasReminderCol = await pool.query<{ exists: boolean }>(
+    `SELECT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'users'
+        AND column_name = 'update_reminder_business_days'
+    ) AS exists`
+  );
+  if (!hasReminderCol.rows[0]?.exists) {
+    console.log("[schema] Adding users.update_reminder_business_days…");
+    await pool.query(
+      `ALTER TABLE users ADD COLUMN update_reminder_business_days INTEGER NOT NULL DEFAULT 2`
+    );
+  }
+
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'users_update_reminder_business_days_check'
+      ) THEN
+        ALTER TABLE users ADD CONSTRAINT users_update_reminder_business_days_check
+          CHECK (update_reminder_business_days BETWEEN 1 AND 30);
+      END IF;
+    END
+    $$;
+  `);
+
+  const projTbl = await pool.query<{ exists: boolean }>(
+    `SELECT EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = 'projects'
+    ) AS exists`
+  );
+  if (!projTbl.rows[0]?.exists) return;
+
+  const hasCust = await pool.query<{ exists: boolean }>(
+    `SELECT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'projects'
+        AND column_name = 'last_customer_update_at'
+    ) AS exists`
+  );
+  if (!hasCust.rows[0]?.exists) {
+    console.log("[schema] Adding projects.last_customer_update_at…");
+    await pool.query(`ALTER TABLE projects ADD COLUMN last_customer_update_at TIMESTAMPTZ`);
+  }
+
+  const hasCrm = await pool.query<{ exists: boolean }>(
+    `SELECT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'projects'
+        AND column_name = 'last_crm_update_at'
+    ) AS exists`
+  );
+  if (!hasCrm.rows[0]?.exists) {
+    console.log("[schema] Adding projects.last_crm_update_at…");
+    await pool.query(`ALTER TABLE projects ADD COLUMN last_crm_update_at TIMESTAMPTZ`);
+  }
+
+  console.log("[schema] Ensuring pm_business_weekdays_after()…");
+  await pool.query(PM_BUSINESS_WEEKDAYS_AFTER_SQL);
+}

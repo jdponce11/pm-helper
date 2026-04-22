@@ -16,6 +16,8 @@ CREATE TABLE users (
   email         TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
   full_name     TEXT NOT NULL,
+  update_reminder_business_days INTEGER NOT NULL DEFAULT 2
+    CHECK (update_reminder_business_days BETWEEN 1 AND 30),
   created_at    TIMESTAMPTZ DEFAULT NOW(),
   updated_at    TIMESTAMPTZ DEFAULT NOW()
 );
@@ -56,6 +58,8 @@ CREATE TABLE projects (
   wholesale_customer     TEXT NOT NULL,
   action_flag            action_flag_enum NOT NULL,
   status                 project_status_enum NOT NULL DEFAULT 'ACTIVE',
+  last_customer_update_at TIMESTAMPTZ,
+  last_crm_update_at     TIMESTAMPTZ,
   created_at             TIMESTAMPTZ DEFAULT NOW(),
   updated_at             TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE (owner_id, project_id)
@@ -91,3 +95,30 @@ CREATE TABLE activity_log (
 );
 
 CREATE INDEX idx_activity_log_project_id ON activity_log(project_id);
+
+CREATE OR REPLACE FUNCTION pm_business_weekdays_after(anchor timestamptz, tz text)
+RETURNS integer
+LANGUAGE plpgsql
+STABLE
+AS $$
+DECLARE
+  d_start date;
+  d_end date;
+  i int;
+  n int := 0;
+  d date;
+BEGIN
+  d_start := (anchor AT TIME ZONE tz)::date;
+  d_end := (CURRENT_TIMESTAMP AT TIME ZONE tz)::date;
+  IF d_end <= d_start THEN
+    RETURN 0;
+  END IF;
+  FOR i IN 1..(d_end - d_start) LOOP
+    d := d_start + i;
+    IF EXTRACT(ISODOW FROM d) <= 5 THEN
+      n := n + 1;
+    END IF;
+  END LOOP;
+  RETURN n;
+END;
+$$;

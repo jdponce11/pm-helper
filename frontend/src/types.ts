@@ -10,6 +10,7 @@ export interface AuthUser {
   id: number;
   email: string;
   fullName: string;
+  updateReminderBusinessDays: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -29,6 +30,10 @@ export interface Project {
   status: ProjectStatus;
   createdAt: string;
   updatedAt: string;
+  lastCustomerUpdateAt: string | null;
+  lastCrmUpdateAt: string | null;
+  customerUpdateStale: boolean;
+  crmUpdateStale: boolean;
 }
 
 /** Archived “Latest update” snapshot (Phase 3) */
@@ -81,5 +86,9 @@ export function emptyProject(): Omit<Project, "id" | "createdAt" | "updatedAt"> 
     wholesaleCustomer: "",
     actionFlag: "PASSIVE_MONITOR",
     status: "ACTIVE",
+    lastCustomerUpdateAt: null,
+    lastCrmUpdateAt: null,
+    customerUpdateStale: false,
+    crmUpdateStale: false,
   };
 }
