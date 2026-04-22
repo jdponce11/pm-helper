@@ -4,6 +4,10 @@ import { Router } from "express";
 import { z } from "zod";
 import { pool } from "../db.js";
 import { appendUrgentConditions, queryUrgentProjects } from "../urgentQuery.js";
+import {
+  nextStepDeadlineFieldSchema,
+  resolveNextStepDeadlineForDb,
+} from "../nextStepDeadline.js";
 import type { ActionFlag, ActivityLogRow, ProjectRow, ProjectStatus } from "../types.js";
 import { activityLogRowToJson, rowToJson } from "../types.js";
 
@@ -26,7 +30,7 @@ const projectBodySchema = z.object({
   projectId: z.string().min(1),
   latestUpdate: z.string().nullable().optional(),
   nextAction: z.string().nullable().optional(),
-  nextStepDeadline: dateString,
+  nextStepDeadline: nextStepDeadlineFieldSchema,
   wholesaleCustomer: z.string().min(1),
   actionFlag: actionFlagSchema,
 });
@@ -133,12 +137,14 @@ projectsRouter.post("/", async (req, res) => {
   }
   const b = parsed.data;
   try {
+    const deadline = await resolveNextStepDeadlineForDb(pool, b.nextStepDeadline);
     const rows = await pool.query<ProjectRow>(
       `INSERT INTO projects (
         owner_id,
         parent_project_name, final_customer, country, start_date, project_id,
-        latest_update, next_action, next_step_deadline, wholesale_customer, action_flag
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::action_flag_enum)
+        latest_update, next_action, next_step_deadline, next_step_deadline_has_time,
+        wholesale_customer, action_flag
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::action_flag_enum)
       RETURNING *`,
       [
         ownerId(req),
@@ -149,7 +155,8 @@ projectsRouter.post("/", async (req, res) => {
         b.projectId,
         b.latestUpdate ?? null,
         b.nextAction ?? null,
-        b.nextStepDeadline,
+        deadline.ts,
+        deadline.includesTime,
         b.wholesaleCustomer,
         b.actionFlag as ActionFlag,
       ]
@@ -488,6 +495,11 @@ projectsRouter.patch("/:id", async (req, res) => {
   }
   const b = parsed.data;
 
+  let resolvedDeadline: Awaited<ReturnType<typeof resolveNextStepDeadlineForDb>> | undefined;
+  if (b.nextStepDeadline !== undefined) {
+    resolvedDeadline = await resolveNextStepDeadlineForDb(pool, b.nextStepDeadline);
+  }
+
   const assignments: string[] = [];
   const values: unknown[] = [];
   let n = 1;
@@ -505,7 +517,10 @@ projectsRouter.patch("/:id", async (req, res) => {
   if (b.projectId !== undefined) push("project_id", b.projectId);
   if (b.latestUpdate !== undefined) push("latest_update", b.latestUpdate);
   if (b.nextAction !== undefined) push("next_action", b.nextAction);
-  if (b.nextStepDeadline !== undefined) push("next_step_deadline", b.nextStepDeadline);
+  if (resolvedDeadline !== undefined) {
+    push("next_step_deadline", resolvedDeadline.ts);
+    push("next_step_deadline_has_time", resolvedDeadline.includesTime);
+  }
   if (b.wholesaleCustomer !== undefined) push("wholesale_customer", b.wholesaleCustomer);
   if (b.actionFlag !== undefined) {
     assignments.push(`action_flag = $${n}::action_flag_enum`);
@@ -592,6 +607,7 @@ projectsRouter.put("/:id", async (req, res) => {
   }
   const b = parsed.data;
   const newLatest = b.latestUpdate ?? null;
+  const deadline = await resolveNextStepDeadlineForDb(pool, b.nextStepDeadline);
 
   const client = await pool.connect();
   try {
@@ -632,9 +648,10 @@ projectsRouter.put("/:id", async (req, res) => {
         latest_update = $6,
         next_action = $7,
         next_step_deadline = $8,
-        wholesale_customer = $9,
-        action_flag = $10::action_flag_enum
-      WHERE id = $11
+        next_step_deadline_has_time = $9,
+        wholesale_customer = $10,
+        action_flag = $11::action_flag_enum
+      WHERE id = $12
       RETURNING *`,
       [
         b.parentProjectName,
@@ -644,7 +661,8 @@ projectsRouter.put("/:id", async (req, res) => {
         b.projectId,
         newLatest,
         b.nextAction ?? null,
-        b.nextStepDeadline,
+        deadline.ts,
+        deadline.includesTime,
         b.wholesaleCustomer,
         b.actionFlag as ActionFlag,
         id,

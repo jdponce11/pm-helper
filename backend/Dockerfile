@@ -19,6 +19,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY package.json ./
 COPY migrations/007_users_and_ownership.sql ./migrations/007_users_and_ownership.sql
+COPY migrations/008_next_step_deadline_timestamptz.sql ./migrations/008_next_step_deadline_timestamptz.sql
 EXPOSE 5000
 ENV PORT=5000
 CMD ["node", "dist/index.js"]

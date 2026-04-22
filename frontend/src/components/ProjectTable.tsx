@@ -24,23 +24,17 @@ import { ActionFlagBadge } from "./ActionFlagBadge";
 import { ActivityHistoryModal } from "./ActivityHistoryModal";
 import { ProjectFormModal } from "./ProjectFormModal";
 import { useModalBackdropDismiss } from "../useModalBackdropDismiss";
+import {
+  datetimeLocalToIso,
+  displayDeadline,
+  isDateOnlyDeadline,
+  isDeadlinePast,
+  isoToDatetimeLocalValue,
+} from "../nextStepDeadline";
 
 function trunc(s: string | null, n = 56): string {
   if (s == null || s === "") return "—";
   return s.length <= n ? s : `${s.slice(0, n)}…`;
-}
-
-function isDeadlinePast(isoDate: string): boolean {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate.trim());
-  if (!match) return false;
-  const y = Number(match[1]);
-  const m = Number(match[2]);
-  const d = Number(match[3]);
-  const deadline = new Date(y, m - 1, d);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  deadline.setHours(0, 0, 0, 0);
-  return deadline < today;
 }
 
 function rowClassName(p: Project): string {
@@ -142,17 +136,38 @@ function InlineDeadlineCell(props: {
 }) {
   const { project, saving, readOnly, onSave } = props;
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(project.nextStepDeadline);
+  const [draftDate, setDraftDate] = useState(() =>
+    isDateOnlyDeadline(project.nextStepDeadline)
+      ? project.nextStepDeadline
+      : project.nextStepDeadline.slice(0, 10)
+  );
+  const [draftDatetimeLocal, setDraftDatetimeLocal] = useState(() =>
+    isDateOnlyDeadline(project.nextStepDeadline)
+      ? ""
+      : isoToDatetimeLocalValue(project.nextStepDeadline)
+  );
 
   useEffect(() => {
-    setDraft(project.nextStepDeadline);
+    if (isDateOnlyDeadline(project.nextStepDeadline)) {
+      setDraftDate(project.nextStepDeadline);
+      setDraftDatetimeLocal("");
+    } else {
+      setDraftDate(project.nextStepDeadline.slice(0, 10));
+      setDraftDatetimeLocal(isoToDatetimeLocalValue(project.nextStepDeadline));
+    }
   }, [project.nextStepDeadline, project.id]);
 
   useEffect(() => {
     if (!editing) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
-        setDraft(project.nextStepDeadline);
+        if (isDateOnlyDeadline(project.nextStepDeadline)) {
+          setDraftDate(project.nextStepDeadline);
+          setDraftDatetimeLocal("");
+        } else {
+          setDraftDate(project.nextStepDeadline.slice(0, 10));
+          setDraftDatetimeLocal(isoToDatetimeLocalValue(project.nextStepDeadline));
+        }
         setEditing(false);
       }
     }
@@ -160,15 +175,22 @@ function InlineDeadlineCell(props: {
     return () => window.removeEventListener("keydown", onKey);
   }, [editing, project.nextStepDeadline]);
 
+  function deadlinePayloadFromDrafts(): string {
+    if (isDateOnlyDeadline(project.nextStepDeadline)) {
+      return draftDate;
+    }
+    return datetimeLocalToIso(draftDatetimeLocal);
+  }
+
   async function commit() {
-    const next = draft;
+    const next = deadlinePayloadFromDrafts();
     setEditing(false);
     if (next === project.nextStepDeadline) return;
     await onSave(project.id, { nextStepDeadline: next });
   }
 
   if (readOnly) {
-    return <span>{project.nextStepDeadline}</span>;
+    return <span>{displayDeadline(project.nextStepDeadline)}</span>;
   }
 
   if (saving) {
@@ -176,14 +198,30 @@ function InlineDeadlineCell(props: {
   }
 
   if (editing) {
-    return (
+    return isDateOnlyDeadline(project.nextStepDeadline) ? (
       <input
         className="inline-edit__control"
         type="date"
         autoFocus
-        value={draft}
+        value={draftDate}
         aria-label="Next step deadline"
-        onChange={(e) => setDraft(e.target.value)}
+        onChange={(e) => setDraftDate(e.target.value)}
+        onBlur={() => void commit()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            void commit();
+          }
+        }}
+      />
+    ) : (
+      <input
+        className="inline-edit__control"
+        type="datetime-local"
+        autoFocus
+        value={draftDatetimeLocal}
+        aria-label="Next step deadline"
+        onChange={(e) => setDraftDatetimeLocal(e.target.value)}
         onBlur={() => void commit()}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
@@ -201,7 +239,7 @@ function InlineDeadlineCell(props: {
       title="Double-click to edit"
       onDoubleClick={() => setEditing(true)}
     >
-      {project.nextStepDeadline}
+      {displayDeadline(project.nextStepDeadline)}
     </span>
   );
 }

@@ -3,7 +3,7 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import express from "express";
 import { pool } from "./db.js";
-import { ensurePhase7Schema } from "./ensureSchema.js";
+import { ensureNextStepDeadlineSchema, ensurePhase7Schema } from "./ensureSchema.js";
 import { requireAuth } from "./middleware/auth.js";
 import { authRouter } from "./routes/auth.js";
 import { projectsRouter } from "./routes/projects.js";
@@ -28,6 +28,7 @@ app.use((_req, res) => {
 
 async function main() {
   await ensurePhase7Schema();
+  await ensureNextStepDeadlineSchema();
   app.listen(port, "0.0.0.0", () => {
     console.log(`API listening on ${port}`);
   });

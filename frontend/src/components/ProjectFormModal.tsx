@@ -1,5 +1,10 @@
 import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
 import { fetchProjectFieldSuggestions } from "../api";
+import {
+  datetimeLocalToIso,
+  isDateOnlyDeadline,
+  isoToDatetimeLocalValue,
+} from "../nextStepDeadline";
 import type { Project } from "../types";
 import { ACTION_FLAGS, emptyProject } from "../types";
 import { useModalBackdropDismiss } from "../useModalBackdropDismiss";
@@ -30,6 +35,9 @@ export function ProjectFormModal(props: {
   ) => Promise<Project>;
 }) {
   const [values, setValues] = useState(() => emptyProject());
+  /** Date-only uses YYYY-MM-DD; date+time uses datetime-local then ISO on submit. */
+  const [deadlineMode, setDeadlineMode] = useState<"date" | "datetime">("date");
+  const [deadlineDatetimeLocal, setDeadlineDatetimeLocal] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [suggestionLists, setSuggestionLists] = useState<{
@@ -45,6 +53,9 @@ export function ProjectFormModal(props: {
     setError(null);
     if (props.mode === "edit" && props.initial) {
       const p = props.initial;
+      const dtMode = !isDateOnlyDeadline(p.nextStepDeadline);
+      setDeadlineMode(dtMode ? "datetime" : "date");
+      setDeadlineDatetimeLocal(dtMode ? isoToDatetimeLocalValue(p.nextStepDeadline) : "");
       setValues({
         parentProjectName: p.parentProjectName,
         finalCustomer: p.finalCustomer,
@@ -53,12 +64,14 @@ export function ProjectFormModal(props: {
         projectId: p.projectId,
         latestUpdate: p.latestUpdate,
         nextAction: p.nextAction,
-        nextStepDeadline: p.nextStepDeadline,
+        nextStepDeadline: dtMode ? p.nextStepDeadline : p.nextStepDeadline.slice(0, 10),
         wholesaleCustomer: p.wholesaleCustomer,
         actionFlag: p.actionFlag,
         status: p.status,
       });
     } else {
+      setDeadlineMode("date");
+      setDeadlineDatetimeLocal("");
       setValues(emptyProject());
     }
   }, [props.open, props.mode, props.initial]);
@@ -125,8 +138,20 @@ export function ProjectFormModal(props: {
     e.preventDefault();
     setSaving(true);
     setError(null);
+    let nextStepDeadline: string;
+    try {
+      nextStepDeadline =
+        deadlineMode === "date"
+          ? values.nextStepDeadline.trim().slice(0, 10)
+          : datetimeLocalToIso(deadlineDatetimeLocal);
+    } catch {
+      setError("Enter a valid date and time for the next step.");
+      setSaving(false);
+      return;
+    }
     const payload = {
       ...values,
+      nextStepDeadline,
       latestUpdate: values.latestUpdate?.trim() || null,
       nextAction: values.nextAction?.trim() || null,
     };
@@ -246,14 +271,63 @@ export function ProjectFormModal(props: {
                 autoComplete="off"
               />
             </label>
-            <label>
+            <label className="form-grid__full">
               Next step deadline *
-              <input
-                required
-                type="date"
-                value={values.nextStepDeadline}
-                onChange={(e) => set("nextStepDeadline", e.target.value)}
-              />
+              <div className="deadline-mode">
+                <div className="deadline-mode__opt">
+                  <input
+                    id={`${listIdBase}-dl-date`}
+                    type="radio"
+                    name="deadline-mode"
+                    checked={deadlineMode === "date"}
+                    onChange={() => {
+                      setDeadlineMode("date");
+                      const d =
+                        deadlineDatetimeLocal.slice(0, 10) ||
+                        values.nextStepDeadline.slice(0, 10);
+                      set("nextStepDeadline", d);
+                    }}
+                  />
+                  <label htmlFor={`${listIdBase}-dl-date`}>Date only</label>
+                </div>
+                <div className="deadline-mode__opt">
+                  <input
+                    id={`${listIdBase}-dl-dt`}
+                    type="radio"
+                    name="deadline-mode"
+                    checked={deadlineMode === "datetime"}
+                    onChange={() => {
+                      setDeadlineMode("datetime");
+                      const base =
+                        values.nextStepDeadline.slice(0, 10) ||
+                        deadlineDatetimeLocal.slice(0, 10);
+                      const nextLocal =
+                        deadlineDatetimeLocal || `${base}T09:00`;
+                      setDeadlineDatetimeLocal(nextLocal);
+                    }}
+                  />
+                  <label htmlFor={`${listIdBase}-dl-dt`}>Date and time</label>
+                </div>
+              </div>
+              {deadlineMode === "date" ? (
+                <input
+                  required
+                  type="date"
+                  value={
+                    isDateOnlyDeadline(values.nextStepDeadline)
+                      ? values.nextStepDeadline
+                      : values.nextStepDeadline.slice(0, 10)
+                  }
+                  onChange={(e) => set("nextStepDeadline", e.target.value)}
+                />
+              ) : (
+                <input
+                  required
+                  type="datetime-local"
+                  value={deadlineDatetimeLocal}
+                  onChange={(e) => setDeadlineDatetimeLocal(e.target.value)}
+                />
+              )}
             </label>
             <label>
               Action flag *

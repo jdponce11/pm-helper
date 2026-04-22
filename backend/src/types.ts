@@ -1,3 +1,5 @@
+import { formatProjectNextStepDeadline } from "./nextStepDeadline.js";
+
 export type ActionFlag =
   | "PASSIVE_MONITOR"
   | "OPTIMIZATION_NEEDED"
@@ -29,6 +31,7 @@ export interface ProjectRow {
   latest_update: string | null;
   next_action: string | null;
   next_step_deadline: string;
+  next_step_deadline_has_time: boolean;
   wholesale_customer: string;
   action_flag: ActionFlag;
   status: ProjectStatus;
@@ -63,7 +66,10 @@ export function rowToJson(row: ProjectRow): ProjectJson {
     projectId: row.project_id,
     latestUpdate: row.latest_update,
     nextAction: row.next_action,
-    nextStepDeadline: row.next_step_deadline,
+    nextStepDeadline: formatProjectNextStepDeadline(
+      row.next_step_deadline,
+      row.next_step_deadline_has_time ?? false
+    ),
     wholesaleCustomer: row.wholesale_customer,
     actionFlag: row.action_flag,
     status: row.status,

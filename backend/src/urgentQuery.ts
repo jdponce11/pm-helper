@@ -1,11 +1,12 @@
 import type { Pool } from "pg";
 import type { ProjectRow } from "./types.js";
+import { getUrgencyTimezone } from "./urgencyTimezone.js";
 
-export function getUrgencyTimezone(): string {
-  return process.env.URGENCY_TIMEZONE?.trim() || "UTC";
-}
-
-/** Deadline is “today” in the configured zone and action is not passive monitor. */
+/**
+ * Deadline is “today” in the configured zone and action is not passive monitor.
+ * For both date-only (stored as start-of-day in that zone) and datetimes, “today” means
+ * the scheduled instant’s calendar date in URGENCY_TIMEZONE equals today’s date there.
+ */
 export async function queryUrgentProjects(
   pool: Pool,
   ownerId: number
@@ -15,7 +16,8 @@ export async function queryUrgentProjects(
     `SELECT * FROM projects
      WHERE owner_id = $1
        AND status = 'ACTIVE'::project_status_enum
-       AND next_step_deadline = (CURRENT_TIMESTAMP AT TIME ZONE $2::text)::date
+       AND (next_step_deadline AT TIME ZONE $2::text)::date =
+           (CURRENT_TIMESTAMP AT TIME ZONE $2::text)::date
        AND action_flag <> 'PASSIVE_MONITOR'::action_flag_enum
      ORDER BY
        CASE action_flag::text
@@ -38,7 +40,7 @@ export function appendUrgentConditions(
   const tz = getUrgencyTimezone();
   conditions.push(`status = 'ACTIVE'::project_status_enum`);
   conditions.push(
-    `next_step_deadline = (CURRENT_TIMESTAMP AT TIME ZONE $${p}::text)::date`
+    `(next_step_deadline AT TIME ZONE $${p}::text)::date = (CURRENT_TIMESTAMP AT TIME ZONE $${p}::text)::date`
   );
   params.push(tz);
   p++;

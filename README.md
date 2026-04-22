@@ -113,7 +113,8 @@ Defined in [`db/init.sql`](db/init.sql).
 | `project_id` | `TEXT` | Required, **unique** (business ID) |
 | `latest_update` | `TEXT` | Optional |
 | `next_action` | `TEXT` | Optional |
-| `next_step_deadline` | `DATE` | Required |
+| `next_step_deadline` | `TIMESTAMPTZ` | Required; calendar day or specific instant |
+| `next_step_deadline_has_time` | `BOOLEAN` | Required; `false` = date-only semantics |
 | `wholesale_customer` | `TEXT` | Required |
 | `action_flag` | `action_flag_enum` | Required |
 | `status` | `project_status_enum` | Required, default `ACTIVE` |
@@ -125,13 +126,13 @@ Defined in [`db/init.sql`](db/init.sql).
 
 Indexes: `action_flag`, `next_step_deadline`, `project_id`, `status`.
 
-Existing databases: apply [`db/migrations/006_project_status.sql`](db/migrations/006_project_status.sql) once (new installs use `db/init.sql` which already includes `status`).
+Existing databases: apply [`db/migrations/006_project_status.sql`](db/migrations/006_project_status.sql) once (new installs use `db/init.sql` which already includes `status`). For `next_step_deadline` still `DATE`, the API migrates it at startup using `URGENCY_TIMEZONE` (see `ensureNextStepDeadlineSchema`). You can also run [`db/migrations/008_next_step_deadline_timestamptz.sql`](db/migrations/008_next_step_deadline_timestamptz.sql) manually (defaults to UTC in the `USING` clause; edit if needed).
 
 ---
 
 ## 2. REST API (JSON)
 
-Dates in bodies and responses use **ISO 8601 date** strings `YYYY-MM-DD`. Timestamps are ISO 8601 with timezone.
+`startDate` uses **ISO 8601 date** `YYYY-MM-DD`. `nextStepDeadline` is either that same date form (no wall-clock time) or a full **ISO 8601 datetime** (instant). Other timestamps are ISO with timezone.
 
 ### Projects
 
