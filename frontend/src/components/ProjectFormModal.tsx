@@ -5,10 +5,13 @@ import {
   isDateOnlyDeadline,
   isoToDatetimeLocalValue,
 } from "../nextStepDeadline";
+import { formatExternalProjectId } from "../projectDisplay";
 import type { Project } from "../types";
 import { ACTION_FLAGS, emptyProject } from "../types";
+import { useActivityLog } from "../useActivityLog";
 import { useModalBackdropDismiss } from "../useModalBackdropDismiss";
 import { formatLastUpdateCadenceLine } from "../updateCadenceDisplay";
+import { ActivityHistoryList } from "./ActivityHistoryList";
 
 const SUGGESTION_DROPDOWN_MAX = 50;
 const SUGGESTION_IDLE_PREVIEW = 40;
@@ -54,6 +57,12 @@ export function ProjectFormModal(props: {
     wholesaleCustomers: string[];
   }>({ parentProjectNames: [], finalCustomers: [], countries: [], wholesaleCustomers: [] });
   const listIdBase = useId();
+
+  const historyProjectId =
+    props.mode === "edit" && props.initial ? props.initial.id : null;
+  const historyEnabled = props.open && props.mode === "edit" && props.initial != null;
+  const { entries: activityEntries, loading: activityLoading, error: activityError } =
+    useActivityLog(historyProjectId, historyEnabled);
 
   useEffect(() => {
     if (!props.open) return;
@@ -148,6 +157,8 @@ export function ProjectFormModal(props: {
 
   if (!props.open) return null;
 
+  const editWithHistory = props.mode === "edit" && props.initial != null;
+
   function set<K extends keyof typeof values>(key: K, v: (typeof values)[K]) {
     setValues((prev) => ({ ...prev, [key]: v }));
   }
@@ -217,16 +228,21 @@ export function ProjectFormModal(props: {
       {...backdropDismiss}
     >
       <div
-        className="modal"
+        className={`modal modal--project-form${editWithHistory ? " modal--project-form--wide" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="project-form-title"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="modal__header">
-          <h2 id="project-form-title">
-            {props.mode === "create" ? "New project" : "Edit project"}
-          </h2>
+          <div>
+            <h2 id="project-form-title">
+              {props.mode === "create" ? "New project" : "Edit project"}
+            </h2>
+            {props.mode === "edit" && props.initial ? (
+              <p className="modal__subtitle mono">{formatExternalProjectId(props.initial.projectId)}</p>
+            ) : null}
+          </div>
           <button type="button" className="btn btn--ghost" onClick={props.onClose}>
             Close
           </button>
@@ -253,221 +269,265 @@ export function ProjectFormModal(props: {
               <option key={v} value={v} />
             ))}
           </datalist>
-          <div className="form-grid">
-            <label>
-              Parent project name
-              <input
-                value={values.parentProjectName}
-                onChange={(e) => set("parentProjectName", e.target.value)}
-                list={parentListId}
-                autoComplete="off"
-              />
-            </label>
-            <label>
-              Final customer *
-              <input
-                required
-                value={values.finalCustomer}
-                onChange={(e) => set("finalCustomer", e.target.value)}
-                list={finalListId}
-                autoComplete="off"
-              />
-            </label>
-            <label>
-              Country *
-              <input
-                required
-                value={values.country}
-                onChange={(e) => set("country", e.target.value)}
-                list={countryListId}
-                autoComplete="off"
-              />
-            </label>
-            <label>
-              Start date *
-              <input
-                required
-                type="date"
-                value={values.startDate}
-                onChange={(e) => set("startDate", e.target.value)}
-              />
-            </label>
-            <label>
-              Project ID
-              <input
-                value={values.projectId ?? ""}
-                onChange={(e) => set("projectId", e.target.value)}
-                placeholder="Leave blank until assigned"
-                autoComplete="off"
-              />
-            </label>
-            <label>
-              Wholesale customer *
-              <input
-                required
-                value={values.wholesaleCustomer}
-                onChange={(e) => set("wholesaleCustomer", e.target.value)}
-                list={wholesaleListId}
-                autoComplete="off"
-              />
-            </label>
-            <label className="form-grid__full">
-              Next step deadline *
-              <div className="deadline-mode">
-                <div className="deadline-mode__opt">
+          <div
+            className={
+              editWithHistory
+                ? "modal-form-layout modal-form-layout--with-history"
+                : "modal-form-layout"
+            }
+          >
+            <div className="modal-form-layout__main">
+              <div className="form-grid">
+                <label>
+                  Parent project name
                   <input
-                    id={`${listIdBase}-dl-date`}
-                    type="radio"
-                    name="deadline-mode"
-                    checked={deadlineMode === "date"}
-                    onChange={() => {
-                      setDeadlineMode("date");
-                      const d =
-                        deadlineDatetimeLocal.slice(0, 10) ||
-                        values.nextStepDeadline.slice(0, 10);
-                      set("nextStepDeadline", d);
-                    }}
+                    value={values.parentProjectName}
+                    onChange={(e) => set("parentProjectName", e.target.value)}
+                    list={parentListId}
+                    autoComplete="off"
                   />
-                  <label htmlFor={`${listIdBase}-dl-date`}>Date only</label>
-                </div>
-                <div className="deadline-mode__opt">
+                </label>
+                <label>
+                  Final customer *
                   <input
-                    id={`${listIdBase}-dl-dt`}
-                    type="radio"
-                    name="deadline-mode"
-                    checked={deadlineMode === "datetime"}
-                    onChange={() => {
-                      setDeadlineMode("datetime");
-                      const base =
-                        values.nextStepDeadline.slice(0, 10) ||
-                        deadlineDatetimeLocal.slice(0, 10);
-                      const nextLocal =
-                        deadlineDatetimeLocal || `${base}T09:00`;
-                      setDeadlineDatetimeLocal(nextLocal);
-                    }}
+                    required
+                    value={values.finalCustomer}
+                    onChange={(e) => set("finalCustomer", e.target.value)}
+                    list={finalListId}
+                    autoComplete="off"
                   />
-                  <label htmlFor={`${listIdBase}-dl-dt`}>Date and time</label>
+                </label>
+                <label>
+                  Country *
+                  <input
+                    required
+                    value={values.country}
+                    onChange={(e) => set("country", e.target.value)}
+                    list={countryListId}
+                    autoComplete="off"
+                  />
+                </label>
+                <label>
+                  Start date *
+                  <input
+                    required
+                    type="date"
+                    value={values.startDate}
+                    onChange={(e) => set("startDate", e.target.value)}
+                  />
+                </label>
+                <label>
+                  Project ID
+                  <input
+                    value={values.projectId ?? ""}
+                    onChange={(e) => set("projectId", e.target.value)}
+                    placeholder="Leave blank until assigned"
+                    autoComplete="off"
+                  />
+                </label>
+                <label>
+                  Wholesale customer *
+                  <input
+                    required
+                    value={values.wholesaleCustomer}
+                    onChange={(e) => set("wholesaleCustomer", e.target.value)}
+                    list={wholesaleListId}
+                    autoComplete="off"
+                  />
+                </label>
+                <label className="form-grid__full">
+                  Next step deadline *
+                  <div className="deadline-mode">
+                    <div className="deadline-mode__opt">
+                      <input
+                        id={`${listIdBase}-dl-date`}
+                        type="radio"
+                        name="deadline-mode"
+                        checked={deadlineMode === "date"}
+                        onChange={() => {
+                          setDeadlineMode("date");
+                          const d =
+                            deadlineDatetimeLocal.slice(0, 10) ||
+                            values.nextStepDeadline.slice(0, 10);
+                          set("nextStepDeadline", d);
+                        }}
+                      />
+                      <label htmlFor={`${listIdBase}-dl-date`}>Date only</label>
+                    </div>
+                    <div className="deadline-mode__opt">
+                      <input
+                        id={`${listIdBase}-dl-dt`}
+                        type="radio"
+                        name="deadline-mode"
+                        checked={deadlineMode === "datetime"}
+                        onChange={() => {
+                          setDeadlineMode("datetime");
+                          const base =
+                            values.nextStepDeadline.slice(0, 10) ||
+                            deadlineDatetimeLocal.slice(0, 10);
+                          const nextLocal =
+                            deadlineDatetimeLocal || `${base}T09:00`;
+                          setDeadlineDatetimeLocal(nextLocal);
+                        }}
+                      />
+                      <label htmlFor={`${listIdBase}-dl-dt`}>Date and time</label>
+                    </div>
+                  </div>
+                  {deadlineMode === "date" ? (
+                    <input
+                      required
+                      type="date"
+                      value={
+                        isDateOnlyDeadline(values.nextStepDeadline)
+                          ? values.nextStepDeadline
+                          : values.nextStepDeadline.slice(0, 10)
+                      }
+                      onChange={(e) => set("nextStepDeadline", e.target.value)}
+                    />
+                  ) : (
+                    <input
+                      required
+                      type="datetime-local"
+                      value={deadlineDatetimeLocal}
+                      onChange={(e) => setDeadlineDatetimeLocal(e.target.value)}
+                    />
+                  )}
+                </label>
+                <label>
+                  Action flag *
+                  <select
+                    value={values.actionFlag}
+                    onChange={(e) =>
+                      set("actionFlag", e.target.value as typeof values.actionFlag)
+                    }
+                  >
+                    {ACTION_FLAGS.map((f) => (
+                      <option key={f} value={f}>
+                        {f}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="form-grid__full">
+                  Latest update
+                  <textarea
+                    rows={3}
+                    value={values.latestUpdate ?? ""}
+                    onChange={(e) =>
+                      set("latestUpdate", e.target.value || null)
+                    }
+                  />
+                </label>
+                <label className="form-grid__full">
+                  Next action
+                  <textarea
+                    rows={3}
+                    value={values.nextAction ?? ""}
+                    onChange={(e) => set("nextAction", e.target.value || null)}
+                  />
+                </label>
+                <div className="form-grid__full update-cadence-box">
+                  <p className="update-cadence-box__title">PM update cadence</p>
+                  <div className="update-cadence-group" role="group" aria-label="Check-ins for today">
+                    <label className="update-cadence-row">
+                      <input
+                        type="checkbox"
+                        checked={markCustomerToday}
+                        onChange={(e) => setMarkCustomerToday(e.target.checked)}
+                      />
+                      <span className="update-cadence-row__body">
+                        <span className="update-cadence-row__action">Customer update sent today</span>
+                        <span className="update-cadence-row__meta muted">
+                          Last recorded:{" "}
+                          {formatLastUpdateCadenceLine(
+                            props.mode === "edit" && props.initial
+                              ? props.initial.lastCustomerUpdateAt
+                              : values.lastCustomerUpdateAt,
+                            urgencyTimezone
+                          )}
+                        </span>
+                      </span>
+                    </label>
+                    <label className="update-cadence-row">
+                      <input
+                        type="checkbox"
+                        checked={markCrmToday}
+                        onChange={(e) => setMarkCrmToday(e.target.checked)}
+                      />
+                      <span className="update-cadence-row__body">
+                        <span className="update-cadence-row__action">CRM delivery system updated today</span>
+                        <span className="update-cadence-row__meta muted">
+                          Last recorded:{" "}
+                          {formatLastUpdateCadenceLine(
+                            props.mode === "edit" && props.initial
+                              ? props.initial.lastCrmUpdateAt
+                              : values.lastCrmUpdateAt,
+                            urgencyTimezone
+                          )}
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+                  <div
+                    className="update-cadence-group update-cadence-group--foc"
+                    role="group"
+                    aria-label="FOC and CRM registration"
+                  >
+                    <label className="update-cadence-field">
+                      <span className="update-cadence-field__label">FOC date</span>
+                      <span className="update-cadence-field__hint muted">
+                        Reference when you confirm CRM registration; editable later.
+                      </span>
+                      <input
+                        type="date"
+                        value={values.focDate ? startDateForDateInput(values.focDate) : ""}
+                        onChange={(e) =>
+                          set("focDate", e.target.value ? e.target.value : null)
+                        }
+                      />
+                    </label>
+                    <label className="update-cadence-row update-cadence-row--tight">
+                      <input
+                        type="checkbox"
+                        checked={values.focRegisteredInCrm}
+                        disabled={props.mode === "edit" && Boolean(props.initial?.focRegisteredInCrm)}
+                        onChange={(e) => {
+                          const next = e.target.checked;
+                          set("focRegisteredInCrm", next);
+                          if (!next) set("focDate", null);
+                        }}
+                      />
+                      <span className="update-cadence-row__body">
+                        <span className="update-cadence-row__action">
+                          FOC shared with customer and registered in CRM
+                        </span>
+                      </span>
+                    </label>
+                  </div>
                 </div>
               </div>
-              {deadlineMode === "date" ? (
-                <input
-                  required
-                  type="date"
-                  value={
-                    isDateOnlyDeadline(values.nextStepDeadline)
-                      ? values.nextStepDeadline
-                      : values.nextStepDeadline.slice(0, 10)
-                  }
-                  onChange={(e) => set("nextStepDeadline", e.target.value)}
-                />
-              ) : (
-                <input
-                  required
-                  type="datetime-local"
-                  value={deadlineDatetimeLocal}
-                  onChange={(e) => setDeadlineDatetimeLocal(e.target.value)}
-                />
-              )}
-            </label>
-            <label>
-              Action flag *
-              <select
-                value={values.actionFlag}
-                onChange={(e) =>
-                  set("actionFlag", e.target.value as typeof values.actionFlag)
-                }
-              >
-                {ACTION_FLAGS.map((f) => (
-                  <option key={f} value={f}>
-                    {f}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="form-grid__full">
-              Latest update
-              <textarea
-                rows={3}
-                value={values.latestUpdate ?? ""}
-                onChange={(e) =>
-                  set("latestUpdate", e.target.value || null)
-                }
-              />
-            </label>
-            <label className="form-grid__full">
-              Next action
-              <textarea
-                rows={3}
-                value={values.nextAction ?? ""}
-                onChange={(e) => set("nextAction", e.target.value || null)}
-              />
-            </label>
-            <div className="form-grid__full update-cadence-box">
-              <p className="update-cadence-box__title">PM update cadence</p>
-              <label className="update-cadence-check">
-                <input
-                  type="checkbox"
-                  checked={markCustomerToday}
-                  onChange={(e) => setMarkCustomerToday(e.target.checked)}
-                />
-                <span>
-                  I sent a customer update today
-                  <span className="update-cadence-check__hint muted">
-                    {" "}
-                    Last:{" "}
-                    {formatLastUpdateCadenceLine(
-                      props.mode === "edit" && props.initial
-                        ? props.initial.lastCustomerUpdateAt
-                        : values.lastCustomerUpdateAt,
-                      urgencyTimezone
-                    )}
-                  </span>
-                </span>
-              </label>
-              <label className="update-cadence-check">
-                <input
-                  type="checkbox"
-                  checked={markCrmToday}
-                  onChange={(e) => setMarkCrmToday(e.target.checked)}
-                />
-                <span>
-                  I updated the CRM delivery system today
-                  <span className="update-cadence-check__hint muted">
-                    {" "}
-                    Last:{" "}
-                    {formatLastUpdateCadenceLine(
-                      props.mode === "edit" && props.initial
-                        ? props.initial.lastCrmUpdateAt
-                        : values.lastCrmUpdateAt,
-                      urgencyTimezone
-                    )}
-                  </span>
-                </span>
-              </label>
-              <label className="form-grid__full">
-                FOC date (reference — set when you confirm CRM registration; you can edit later)
-                <input
-                  type="date"
-                  value={values.focDate ? startDateForDateInput(values.focDate) : ""}
-                  onChange={(e) =>
-                    set("focDate", e.target.value ? e.target.value : null)
-                  }
-                />
-              </label>
-              <label className="update-cadence-check">
-                <input
-                  type="checkbox"
-                  checked={values.focRegisteredInCrm}
-                  disabled={props.mode === "edit" && Boolean(props.initial?.focRegisteredInCrm)}
-                  onChange={(e) => {
-                    const next = e.target.checked;
-                    set("focRegisteredInCrm", next);
-                    if (!next) set("focDate", null);
-                  }}
-                />
-                <span>FOC date shared with customer and registered in CRM</span>
-              </label>
             </div>
+          {editWithHistory ? (
+            <aside
+              className="modal-form-layout__aside"
+              aria-labelledby="project-form-history-title"
+            >
+              <h3 className="modal-form-history__title" id="project-form-history-title">
+                Latest update history
+              </h3>
+              <div
+                className="modal-form-history__scroll activity-history"
+                role="region"
+                aria-label="Archived latest update notes"
+              >
+                <ActivityHistoryList
+                  entries={activityEntries}
+                  loading={activityLoading}
+                  error={activityError}
+                />
+              </div>
+            </aside>
+          ) : null}
           </div>
           <footer className="modal__footer">
             <button type="button" className="btn btn--ghost" onClick={props.onClose}>
