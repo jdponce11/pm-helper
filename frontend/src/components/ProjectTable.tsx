@@ -35,6 +35,7 @@ import {
   isDeadlinePast,
   isoToDatetimeLocalValue,
 } from "../nextStepDeadline";
+import { formatExternalProjectId } from "../projectDisplay";
 
 function trunc(s: string | null, n = 56): string {
   if (s == null || s === "") return "—";
@@ -446,7 +447,7 @@ export function ProjectTable(props: {
     async (p: Project) => {
       if (
         !window.confirm(
-          `Delete project "${p.projectId}"? This cannot be undone.`
+          `Delete project "${formatExternalProjectId(p.projectId)}"? This cannot be undone.`
         )
       ) {
         return;
@@ -512,7 +513,10 @@ export function ProjectTable(props: {
       {
         accessorKey: "parentProjectName",
         header: "Parent project",
-        cell: (info) => info.getValue<string>(),
+        cell: (info) => {
+          const v = info.getValue<string>().trim();
+          return v.length > 0 ? v : "—";
+        },
       },
       {
         accessorKey: "finalCustomer",
@@ -541,7 +545,9 @@ export function ProjectTable(props: {
         accessorKey: "projectId",
         header: "Project ID",
         cell: (info) => (
-          <span className="mono">{info.getValue<string>()}</span>
+          <span className={`mono${info.getValue<string | null>() ? "" : " muted"}`}>
+            {formatExternalProjectId(info.getValue<string | null>())}
+          </span>
         ),
       },
       {
@@ -1004,7 +1010,9 @@ export function ProjectTable(props: {
             </header>
             <div className="modal__body">
               <p>
-                Mark <strong className="mono">{closeConfirm.projectId}</strong> as closed?
+                Mark{" "}
+                <strong className="mono">{formatExternalProjectId(closeConfirm.projectId)}</strong>{" "}
+                as closed?
                 It will be removed from the active dashboard.
               </p>
             </div>

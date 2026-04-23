@@ -50,7 +50,7 @@ CREATE TABLE projects (
   final_customer         TEXT NOT NULL,
   country                TEXT NOT NULL,
   start_date             DATE NOT NULL,
-  project_id             TEXT NOT NULL,
+  project_id             TEXT,
   latest_update          TEXT,
   next_action            TEXT,
   next_step_deadline         TIMESTAMPTZ NOT NULL,
@@ -61,13 +61,14 @@ CREATE TABLE projects (
   last_customer_update_at TIMESTAMPTZ,
   last_crm_update_at     TIMESTAMPTZ,
   created_at             TIMESTAMPTZ DEFAULT NOW(),
-  updated_at             TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE (owner_id, project_id)
+  updated_at             TIMESTAMPTZ DEFAULT NOW()
 );
+
+CREATE UNIQUE INDEX idx_projects_owner_project_id ON projects (owner_id, project_id)
+WHERE project_id IS NOT NULL AND LENGTH(TRIM(project_id)) > 0;
 
 CREATE INDEX idx_projects_action_flag ON projects(action_flag);
 CREATE INDEX idx_projects_next_step_deadline ON projects(next_step_deadline);
-CREATE INDEX idx_projects_owner_project_id ON projects(owner_id, project_id);
 CREATE INDEX idx_projects_status ON projects(status);
 CREATE INDEX idx_projects_owner_id ON projects(owner_id);
 

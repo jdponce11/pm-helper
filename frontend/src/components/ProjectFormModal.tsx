@@ -73,7 +73,7 @@ export function ProjectFormModal(props: {
         finalCustomer: p.finalCustomer,
         country: p.country,
         startDate: startDateForDateInput(p.startDate) || p.startDate.trim().slice(0, 10),
-        projectId: p.projectId,
+        projectId: p.projectId ?? "",
         latestUpdate: p.latestUpdate,
         nextAction: p.nextAction,
         nextStepDeadline: dtMode ? p.nextStepDeadline : p.nextStepDeadline.slice(0, 10),
@@ -167,8 +167,11 @@ export function ProjectFormModal(props: {
     }
     const startDate =
       startDateForDateInput(values.startDate) || values.startDate.trim().slice(0, 10);
+    const extId = (values.projectId ?? "").trim();
     const payload: ProjectWriteBody = {
       ...values,
+      parentProjectName: values.parentProjectName.trim(),
+      projectId: extId.length === 0 ? null : extId,
       startDate,
       nextStepDeadline,
       latestUpdate: values.latestUpdate?.trim() || null,
@@ -236,9 +239,8 @@ export function ProjectFormModal(props: {
           </datalist>
           <div className="form-grid">
             <label>
-              Parent project name *
+              Parent project name
               <input
-                required
                 value={values.parentProjectName}
                 onChange={(e) => set("parentProjectName", e.target.value)}
                 list={parentListId}
@@ -275,11 +277,12 @@ export function ProjectFormModal(props: {
               />
             </label>
             <label>
-              Project ID *
+              Project ID
               <input
-                required
-                value={values.projectId}
+                value={values.projectId ?? ""}
                 onChange={(e) => set("projectId", e.target.value)}
+                placeholder="Leave blank until assigned"
+                autoComplete="off"
               />
             </label>
             <label>

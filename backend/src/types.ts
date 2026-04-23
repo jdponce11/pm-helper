@@ -28,7 +28,7 @@ export interface ProjectRow {
   final_customer: string;
   country: string;
   start_date: string;
-  project_id: string;
+  project_id: string | null;
   latest_update: string | null;
   next_action: string | null;
   next_step_deadline: string;
@@ -66,7 +66,8 @@ export interface ProjectJson {
   finalCustomer: string;
   country: string;
   startDate: string;
-  projectId: string;
+  /** External / CRM project id; null when not assigned yet (UI shows “Pending”). */
+  projectId: string | null;
   latestUpdate: string | null;
   nextAction: string | null;
   nextStepDeadline: string;
@@ -87,13 +88,17 @@ export function rowToJson(row: ProjectRow, stale?: ProjectStaleCounts & { remind
   const th = stale?.reminderThreshold ?? 999;
   const customerUpdateStale = row.status === "ACTIVE" && customerBd >= th;
   const crmUpdateStale = row.status === "ACTIVE" && crmBd >= th;
+  const extId =
+    row.project_id != null && String(row.project_id).trim().length > 0
+      ? String(row.project_id).trim()
+      : null;
   return {
     id: row.id,
-    parentProjectName: row.parent_project_name,
+    parentProjectName: (row.parent_project_name ?? "").trim(),
     finalCustomer: row.final_customer,
     country: row.country,
     startDate: formatStartDateForJson(row.start_date as unknown),
-    projectId: row.project_id,
+    projectId: extId,
     latestUpdate: row.latest_update,
     nextAction: row.next_action,
     nextStepDeadline: formatProjectNextStepDeadline(

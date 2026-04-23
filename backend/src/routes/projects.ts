@@ -28,12 +28,22 @@ const dateString = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Expected ISO date YYYY-MM-DD");
 
+const trimmedParentProjectName = z.string().transform((s) => s.trim());
+
+const trimmedExternalProjectId = z.preprocess(
+  (v) => (v === undefined || v === null ? "" : v),
+  z
+    .string()
+    .transform((s) => s.trim())
+    .transform((s) => (s.length === 0 ? null : s))
+);
+
 const projectBodySchema = z.object({
-  parentProjectName: z.string().min(1),
+  parentProjectName: trimmedParentProjectName,
   finalCustomer: z.string().min(1),
   country: z.string().min(1),
   startDate: dateString,
-  projectId: z.string().min(1),
+  projectId: trimmedExternalProjectId,
   latestUpdate: z.string().nullable().optional(),
   nextAction: z.string().nullable().optional(),
   nextStepDeadline: nextStepDeadlineFieldSchema,
@@ -286,7 +296,7 @@ projectsRouter.get("/", async (req, res) => {
   if (search) {
     conditions.push(`(
       parent_project_name ILIKE $${p} OR final_customer ILIKE $${p} OR country ILIKE $${p}
-      OR project_id ILIKE $${p} OR COALESCE(latest_update, '') ILIKE $${p}
+      OR (project_id IS NOT NULL AND project_id ILIKE $${p}) OR COALESCE(latest_update, '') ILIKE $${p}
       OR COALESCE(next_action, '') ILIKE $${p} OR wholesale_customer ILIKE $${p}
     )`);
     params.push(`%${search}%`);

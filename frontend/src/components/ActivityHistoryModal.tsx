@@ -3,6 +3,7 @@ import type { ActivityLogEntry, Project } from "../types";
 import { fetchActivityLog } from "../api";
 import { useModalBackdropDismiss } from "../useModalBackdropDismiss";
 import { ActionFlagBadge } from "./ActionFlagBadge";
+import { formatExternalProjectId } from "../projectDisplay";
 
 function formatTimestamp(iso: string): string {
   try {
@@ -46,7 +47,7 @@ export function ActivityHistoryModal(props: {
 
   if (!props.open || !props.project) return null;
 
-  const title = props.project.projectId;
+  const title = formatExternalProjectId(props.project.projectId);
 
   return (
     <div className="modal-backdrop" role="presentation" {...backdropDismiss}>

@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchUpdateReminders, fetchUrgentSummary } from "../api";
 import type { Project } from "../types";
+import { formatUrgentReminderLine } from "../projectDisplay";
 
 const POLL_MS = 5 * 60 * 1000;
 
 function projectLine(p: Project): string {
-  return `${p.projectId} — ${p.parentProjectName}`;
+  return formatUrgentReminderLine(p.projectId, p.parentProjectName);
 }
 
 export function UrgentBell(props: {

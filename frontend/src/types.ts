@@ -21,7 +21,8 @@ export interface Project {
   finalCustomer: string;
   country: string;
   startDate: string;
-  projectId: string;
+  /** External id; null when not assigned (UI shows “Pending”). */
+  projectId: string | null;
   latestUpdate: string | null;
   nextAction: string | null;
   nextStepDeadline: string;
@@ -79,7 +80,7 @@ export function emptyProject(): Omit<Project, "id" | "createdAt" | "updatedAt"> 
     finalCustomer: "",
     country: "",
     startDate: today,
-    projectId: "",
+    projectId: null,
     latestUpdate: null,
     nextAction: null,
     nextStepDeadline: today,

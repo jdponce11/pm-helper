@@ -196,3 +196,44 @@ export async function ensureUpdateCadenceSchema(): Promise<void> {
   console.log("[schema] Ensuring pm_business_weekdays_after()…");
   await pool.query(PM_BUSINESS_WEEKDAYS_AFTER_SQL);
 }
+
+/**
+ * External project_id optional: NULL = unassigned; uniqueness only for non-empty IDs (partial index).
+ */
+export async function ensureOptionalExternalProjectIdSchema(): Promise<void> {
+  const tbl = await pool.query<{ exists: boolean }>(
+    `SELECT EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = 'projects'
+    ) AS exists`
+  );
+  if (!tbl.rows[0]?.exists) return;
+
+  const col = await pool.query<{ is_nullable: string }>(
+    `SELECT is_nullable FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = 'projects' AND column_name = 'project_id'`
+  );
+  const idx = await pool.query<{ indexdef: string | null }>(
+    `SELECT indexdef FROM pg_indexes
+     WHERE schemaname = 'public' AND indexname = 'idx_projects_owner_project_id'`
+  );
+  const def = idx.rows[0]?.indexdef ?? "";
+  if (col.rows[0]?.is_nullable === "YES" && /\bWHERE\b/i.test(def)) {
+    return;
+  }
+
+  console.log(
+    "[schema] Applying optional external project_id migration (partial unique index + NULL unassigned)…"
+  );
+  await pool.query(`ALTER TABLE projects DROP CONSTRAINT IF EXISTS projects_owner_id_project_id_key`);
+  await pool.query(`DROP INDEX IF EXISTS idx_projects_owner_project_id`);
+  await pool.query(
+    `UPDATE projects SET project_id = NULL WHERE LENGTH(TRIM(COALESCE(project_id, ''))) = 0`
+  );
+  await pool.query(`ALTER TABLE projects ALTER COLUMN project_id DROP NOT NULL`);
+  await pool.query(`
+    CREATE UNIQUE INDEX idx_projects_owner_project_id ON projects (owner_id, project_id)
+    WHERE project_id IS NOT NULL AND LENGTH(TRIM(project_id)) > 0
+  `);
+  console.log("[schema] Optional external project_id migration applied.");
+}

@@ -5,6 +5,7 @@ import express from "express";
 import { pool } from "./db.js";
 import {
   ensureNextStepDeadlineSchema,
+  ensureOptionalExternalProjectIdSchema,
   ensurePhase7Schema,
   ensureUpdateCadenceSchema,
 } from "./ensureSchema.js";
@@ -36,6 +37,7 @@ async function main() {
   await ensurePhase7Schema();
   await ensureNextStepDeadlineSchema();
   await ensureUpdateCadenceSchema();
+  await ensureOptionalExternalProjectIdSchema();
   app.listen(port, "0.0.0.0", () => {
     console.log(`API listening on ${port}`);
   });
