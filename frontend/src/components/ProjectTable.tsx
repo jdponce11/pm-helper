@@ -282,16 +282,16 @@ function UpdateCadenceDots(props: { project: Project }) {
         className={`update-cadence-dot update-cadence-dot--customer${p.customerUpdateStale ? " update-cadence-dot--stale" : ""}`}
         title={
           p.customerUpdateStale
-            ? "Customer status update is overdue (vs your threshold)"
-            : "Customer status update is within threshold"
+            ? "Customer status update is overdue (vs your customer reminder threshold)"
+            : "Customer status update is within your customer reminder threshold"
         }
       />
       <span
         className={`update-cadence-dot update-cadence-dot--crm${p.crmUpdateStale ? " update-cadence-dot--stale" : ""}`}
         title={
           p.crmUpdateStale
-            ? "CRM delivery update is overdue (vs your threshold)"
-            : "CRM delivery update is within threshold"
+            ? "CRM delivery update is overdue (vs your CRM reminder threshold)"
+            : "CRM delivery update is within your CRM reminder threshold"
         }
       />
     </span>
@@ -714,8 +714,8 @@ export function ProjectTable(props: {
         {urgentOnly ? (
           <div className="toolbar__urgent-banner" role="status">
             <span>
-              Attention queue: next step due today (non-passive), or passive when both
-              customer and CRM updates exceed your threshold
+              Attention queue: next step due today (non-passive), or passive when customer
+              and CRM updates each exceed their own reminder threshold
             </span>
             <button
               type="button"

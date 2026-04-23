@@ -24,7 +24,7 @@ export function formatUrgentBellLine(p: Project): string {
     p.customerUpdateStale &&
     p.crmUpdateStale
   ) {
-    return `${base} · passive — both update cadences overdue`;
+    return `${base} · passive — customer and CRM cadences each exceed their thresholds`;
   }
   return base;
 }

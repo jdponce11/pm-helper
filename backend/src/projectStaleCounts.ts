@@ -26,12 +26,25 @@ export async function fetchProjectStaleBusinessDayCounts(
   return map;
 }
 
-export async function fetchUserReminderThreshold(pool: Pool, userId: number): Promise<number> {
-  const r = await pool.query<{ update_reminder_business_days: number }>(
-    `SELECT update_reminder_business_days FROM users WHERE id = $1`,
+export type UserReminderThresholds = { customer: number; crm: number };
+
+export async function fetchUserReminderThresholds(
+  pool: Pool,
+  userId: number
+): Promise<UserReminderThresholds> {
+  const r = await pool.query<{
+    update_reminder_business_days: number;
+    crm_update_reminder_business_days: number;
+  }>(
+    `SELECT update_reminder_business_days, crm_update_reminder_business_days FROM users WHERE id = $1`,
     [userId]
   );
-  const v = r.rows[0]?.update_reminder_business_days;
-  if (typeof v === "number" && Number.isInteger(v)) return v;
-  return 2;
+  const row = r.rows[0];
+  const cust = row?.update_reminder_business_days;
+  const crm = row?.crm_update_reminder_business_days;
+  const customer =
+    typeof cust === "number" && Number.isInteger(cust) ? cust : 2;
+  const crmVal =
+    typeof crm === "number" && Number.isInteger(crm) ? crm : customer;
+  return { customer, crm: crmVal };
 }

@@ -161,6 +161,41 @@ export async function ensureUpdateCadenceSchema(): Promise<void> {
     $$;
   `);
 
+  const hasCrmReminderCol = await pool.query<{ exists: boolean }>(
+    `SELECT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'users'
+        AND column_name = 'crm_update_reminder_business_days'
+    ) AS exists`
+  );
+  if (!hasCrmReminderCol.rows[0]?.exists) {
+    console.log("[schema] Adding users.crm_update_reminder_business_days…");
+    await pool.query(`ALTER TABLE users ADD COLUMN crm_update_reminder_business_days INTEGER`);
+    await pool.query(
+      `UPDATE users SET crm_update_reminder_business_days = update_reminder_business_days
+       WHERE crm_update_reminder_business_days IS NULL`
+    );
+    await pool.query(
+      `ALTER TABLE users ALTER COLUMN crm_update_reminder_business_days SET NOT NULL`
+    );
+    await pool.query(
+      `ALTER TABLE users ALTER COLUMN crm_update_reminder_business_days SET DEFAULT 2`
+    );
+  }
+
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'users_crm_update_reminder_business_days_check'
+      ) THEN
+        ALTER TABLE users ADD CONSTRAINT users_crm_update_reminder_business_days_check
+          CHECK (crm_update_reminder_business_days BETWEEN 1 AND 30);
+      END IF;
+    END
+    $$;
+  `);
+
   const projTbl = await pool.query<{ exists: boolean }>(
     `SELECT EXISTS (
       SELECT 1 FROM information_schema.tables

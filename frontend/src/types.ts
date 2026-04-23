@@ -10,7 +10,9 @@ export interface AuthUser {
   id: number;
   email: string;
   fullName: string;
+  /** Customer status update cadence (business days, same DB column name legacy). */
   updateReminderBusinessDays: number;
+  crmUpdateReminderBusinessDays: number;
   createdAt: string;
   updatedAt: string;
 }

@@ -7,7 +7,8 @@ export function SettingsModal(props: {
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [days, setDays] = useState("2");
+  const [customerDays, setCustomerDays] = useState("2");
+  const [crmDays, setCrmDays] = useState("2");
   const [tz, setTz] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -20,7 +21,8 @@ export function SettingsModal(props: {
     setLoading(true);
     void fetchMeSettings()
       .then((s) => {
-        setDays(String(s.updateReminderBusinessDays));
+        setCustomerDays(String(s.updateReminderBusinessDays));
+        setCrmDays(String(s.crmUpdateReminderBusinessDays));
         setTz(s.urgencyTimezone);
       })
       .catch((e) => {
@@ -33,14 +35,25 @@ export function SettingsModal(props: {
     e.preventDefault();
     setSaving(true);
     setError(null);
-    const n = Number(days);
-    if (!Number.isInteger(n) || n < 1 || n > 30) {
-      setError("Enter a whole number from 1 to 30.");
+    const nCustomer = Number(customerDays);
+    const nCrm = Number(crmDays);
+    if (
+      !Number.isInteger(nCustomer) ||
+      nCustomer < 1 ||
+      nCustomer > 30 ||
+      !Number.isInteger(nCrm) ||
+      nCrm < 1 ||
+      nCrm > 30
+    ) {
+      setError("Each value must be a whole number from 1 to 30.");
       setSaving(false);
       return;
     }
     try {
-      await patchMeSettings({ updateReminderBusinessDays: n });
+      await patchMeSettings({
+        updateReminderBusinessDays: nCustomer,
+        crmUpdateReminderBusinessDays: nCrm,
+      });
       props.onSaved();
       props.onClose();
     } catch (err) {
@@ -74,14 +87,25 @@ export function SettingsModal(props: {
           ) : (
             <>
               <label>
-                Remind if no customer update or CRM update for (business days)
+                Remind if no customer status update for (business days)
                 <input
                   type="number"
                   min={1}
                   max={30}
                   required
-                  value={days}
-                  onChange={(e) => setDays(e.target.value)}
+                  value={customerDays}
+                  onChange={(e) => setCustomerDays(e.target.value)}
+                />
+              </label>
+              <label>
+                Remind if no CRM / delivery system update for (business days)
+                <input
+                  type="number"
+                  min={1}
+                  max={30}
+                  required
+                  value={crmDays}
+                  onChange={(e) => setCrmDays(e.target.value)}
                 />
               </label>
               {tz ? (

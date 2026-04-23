@@ -8,7 +8,7 @@ import {
   queryStaleUpdateProjects,
   queryUrgentProjects,
 } from "../urgentQuery.js";
-import { fetchProjectStaleBusinessDayCounts, fetchUserReminderThreshold } from "../projectStaleCounts.js";
+import { fetchProjectStaleBusinessDayCounts, fetchUserReminderThresholds } from "../projectStaleCounts.js";
 import {
   nextStepDeadlineFieldSchema,
   resolveNextStepDeadlineForDb,
@@ -241,10 +241,16 @@ projectsRouter.post("/", async (req, res) => {
     } finally {
       client.release();
     }
-    const th = await fetchUserReminderThreshold(pool, ownerId(req));
+    const reminderTh = await fetchUserReminderThresholds(pool, ownerId(req));
     const staleMap = await fetchProjectStaleBusinessDayCounts(pool, [inserted.id]);
     const c = staleMap.get(inserted.id) ?? { customer: 0, crm: 0 };
-    res.status(201).json(rowToJson(inserted, { ...c, reminderThreshold: th }));
+    res.status(201).json(
+      rowToJson(inserted, {
+        ...c,
+        customerReminderThreshold: reminderTh.customer,
+        crmReminderThreshold: reminderTh.crm,
+      })
+    );
   } catch (e: unknown) {
     const err = e as { code?: string };
     if (err.code === "23505") {
@@ -339,9 +345,9 @@ projectsRouter.get("/", async (req, res) => {
     req.query.urgentOnly === "true" || req.query.urgentOnly === "1";
 
   try {
-    const reminderThreshold = await fetchUserReminderThreshold(pool, ownerId(req));
+    const reminderTh = await fetchUserReminderThresholds(pool, ownerId(req));
     if (urgentOnly) {
-      p = appendUrgentConditions(conditions, params, p, reminderThreshold);
+      p = appendUrgentConditions(conditions, params, p, reminderTh.customer, reminderTh.crm);
     }
     const whereSql = conditions.join(" AND ");
     const countResult = await pool.query<{ c: string }>(
@@ -382,7 +388,11 @@ projectsRouter.get("/", async (req, res) => {
     res.json({
       data: dataResult.rows.map((row) => {
         const c = staleMap.get(row.id) ?? { customer: 0, crm: 0 };
-        return rowToJson(row, { ...c, reminderThreshold });
+        return rowToJson(row, {
+          ...c,
+          customerReminderThreshold: reminderTh.customer,
+          crmReminderThreshold: reminderTh.crm,
+        });
       }),
       meta: {
         total,
@@ -402,15 +412,24 @@ projectsRouter.get("/", async (req, res) => {
 
 projectsRouter.get("/urgent", async (req, res) => {
   try {
-    const reminderThreshold = await fetchUserReminderThreshold(pool, ownerId(req));
-    const rows = await queryUrgentProjects(pool, ownerId(req), reminderThreshold);
+    const reminderTh = await fetchUserReminderThresholds(pool, ownerId(req));
+    const rows = await queryUrgentProjects(
+      pool,
+      ownerId(req),
+      reminderTh.customer,
+      reminderTh.crm
+    );
     const staleMap = await fetchProjectStaleBusinessDayCounts(
       pool,
       rows.map((r) => r.id)
     );
     const data = rows.map((row) => {
       const c = staleMap.get(row.id) ?? { customer: 0, crm: 0 };
-      return rowToJson(row, { ...c, reminderThreshold });
+      return rowToJson(row, {
+        ...c,
+        customerReminderThreshold: reminderTh.customer,
+        crmReminderThreshold: reminderTh.crm,
+      });
     });
     res.json({ count: data.length, data });
   } catch (e) {
@@ -421,17 +440,22 @@ projectsRouter.get("/urgent", async (req, res) => {
 
 projectsRouter.get("/reminders", async (req, res) => {
   try {
-    const reminderThreshold = await fetchUserReminderThreshold(pool, ownerId(req));
+    const reminderTh = await fetchUserReminderThresholds(pool, ownerId(req));
     const { customerStale, crmStale } = await queryStaleUpdateProjects(
       pool,
       ownerId(req),
-      reminderThreshold
+      reminderTh.customer,
+      reminderTh.crm
     );
     const ids = [...new Set([...customerStale, ...crmStale].map((r) => r.id))];
     const staleMap = await fetchProjectStaleBusinessDayCounts(pool, ids);
     const pack = (row: ProjectRow) => {
       const c = staleMap.get(row.id) ?? { customer: 0, crm: 0 };
-      return rowToJson(row, { ...c, reminderThreshold });
+      return rowToJson(row, {
+        ...c,
+        customerReminderThreshold: reminderTh.customer,
+        crmReminderThreshold: reminderTh.crm,
+      });
     };
     res.json({
       urgencyTimezone: getUrgencyTimezone(),
@@ -515,10 +539,16 @@ projectsRouter.patch("/:id/status", async (req, res) => {
     const current = lock.rows[0];
     if (current.status === nextStatus) {
       await client.query("COMMIT");
-      const reminderThreshold = await fetchUserReminderThreshold(pool, ownerId(req));
+      const reminderTh = await fetchUserReminderThresholds(pool, ownerId(req));
       const staleMap = await fetchProjectStaleBusinessDayCounts(pool, [current.id]);
       const c = staleMap.get(current.id) ?? { customer: 0, crm: 0 };
-      res.json(rowToJson(current, { ...c, reminderThreshold }));
+      res.json(
+        rowToJson(current, {
+          ...c,
+          customerReminderThreshold: reminderTh.customer,
+          crmReminderThreshold: reminderTh.crm,
+        })
+      );
       return;
     }
 
@@ -545,10 +575,16 @@ projectsRouter.patch("/:id/status", async (req, res) => {
     }
 
     await client.query("COMMIT");
-    const reminderThreshold = await fetchUserReminderThreshold(pool, ownerId(req));
+    const reminderTh = await fetchUserReminderThresholds(pool, ownerId(req));
     const staleMap = await fetchProjectStaleBusinessDayCounts(pool, [updated.id]);
     const c = staleMap.get(updated.id) ?? { customer: 0, crm: 0 };
-    res.json(rowToJson(updated, { ...c, reminderThreshold }));
+    res.json(
+      rowToJson(updated, {
+        ...c,
+        customerReminderThreshold: reminderTh.customer,
+        crmReminderThreshold: reminderTh.crm,
+      })
+    );
   } catch (e) {
     try {
       await client.query("ROLLBACK");
@@ -607,10 +643,16 @@ projectsRouter.get("/:id", async (req, res) => {
       return;
     }
     const row = result.rows[0];
-    const reminderThreshold = await fetchUserReminderThreshold(pool, ownerId(req));
+    const reminderTh = await fetchUserReminderThresholds(pool, ownerId(req));
     const staleMap = await fetchProjectStaleBusinessDayCounts(pool, [row.id]);
     const c = staleMap.get(row.id) ?? { customer: 0, crm: 0 };
-    res.json(rowToJson(row, { ...c, reminderThreshold }));
+    res.json(
+      rowToJson(row, {
+        ...c,
+        customerReminderThreshold: reminderTh.customer,
+        crmReminderThreshold: reminderTh.crm,
+      })
+    );
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Failed to load project" });
@@ -737,10 +779,16 @@ projectsRouter.patch("/:id", async (req, res) => {
       );
     }
     await client.query("COMMIT");
-    const reminderThreshold = await fetchUserReminderThreshold(pool, ownerId(req));
+    const reminderTh = await fetchUserReminderThresholds(pool, ownerId(req));
     const staleMap = await fetchProjectStaleBusinessDayCounts(pool, [updated.id]);
     const c = staleMap.get(updated.id) ?? { customer: 0, crm: 0 };
-    res.json(rowToJson(updated, { ...c, reminderThreshold }));
+    res.json(
+      rowToJson(updated, {
+        ...c,
+        customerReminderThreshold: reminderTh.customer,
+        crmReminderThreshold: reminderTh.crm,
+      })
+    );
   } catch (e: unknown) {
     try {
       await client.query("ROLLBACK");
@@ -860,10 +908,16 @@ projectsRouter.put("/:id", async (req, res) => {
       );
     }
     await client.query("COMMIT");
-    const reminderThreshold = await fetchUserReminderThreshold(pool, ownerId(req));
+    const reminderTh = await fetchUserReminderThresholds(pool, ownerId(req));
     const staleMap = await fetchProjectStaleBusinessDayCounts(pool, [updated.id]);
     const c = staleMap.get(updated.id) ?? { customer: 0, crm: 0 };
-    res.json(rowToJson(updated, { ...c, reminderThreshold }));
+    res.json(
+      rowToJson(updated, {
+        ...c,
+        customerReminderThreshold: reminderTh.customer,
+        crmReminderThreshold: reminderTh.crm,
+      })
+    );
   } catch (e: unknown) {
     try {
       await client.query("ROLLBACK");

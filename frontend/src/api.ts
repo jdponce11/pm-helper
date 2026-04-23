@@ -23,8 +23,8 @@ export interface ListParams {
   /**
    * Server “attention queue”: ACTIVE projects where either (a) next step deadline is
    * today in URGENCY_TIMEZONE and action is not PASSIVE_MONITOR, or (b) PASSIVE_MONITOR
-   * with both customer and CRM update anchors stale vs your update_reminder_business_days
-   * (same thresholds as reminder lists).
+   * with customer anchor stale vs your customer threshold and CRM anchor stale vs your
+   * CRM threshold (same logic as reminder lists / JSON flags).
    */
   urgentOnly?: boolean;
 }
@@ -117,6 +117,7 @@ export async function fetchUrgentSummary(): Promise<{
 
 export interface MeSettings {
   updateReminderBusinessDays: number;
+  crmUpdateReminderBusinessDays: number;
   urgencyTimezone: string;
 }
 
@@ -127,7 +128,7 @@ export async function fetchMeSettings(): Promise<MeSettings> {
 }
 
 export async function patchMeSettings(
-  body: Pick<MeSettings, "updateReminderBusinessDays">
+  body: Pick<MeSettings, "updateReminderBusinessDays" | "crmUpdateReminderBusinessDays">
 ): Promise<MeSettings> {
   const res = await apiFetch("/api/me/settings", {
     method: "PATCH",

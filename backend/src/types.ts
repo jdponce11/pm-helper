@@ -13,7 +13,9 @@ export interface UserRow {
   email: string;
   password_hash: string;
   full_name: string;
+  /** Customer-facing status update cadence (business days). */
   update_reminder_business_days: number;
+  crm_update_reminder_business_days: number;
   created_at: string;
   updated_at: string;
 }
@@ -82,12 +84,19 @@ export interface ProjectJson {
   crmUpdateStale: boolean;
 }
 
-export function rowToJson(row: ProjectRow, stale?: ProjectStaleCounts & { reminderThreshold: number }): ProjectJson {
+export function rowToJson(
+  row: ProjectRow,
+  stale?: ProjectStaleCounts & {
+    customerReminderThreshold: number;
+    crmReminderThreshold: number;
+  }
+): ProjectJson {
   const customerBd = stale?.customer ?? 0;
   const crmBd = stale?.crm ?? 0;
-  const th = stale?.reminderThreshold ?? 999;
-  const customerUpdateStale = row.status === "ACTIVE" && customerBd >= th;
-  const crmUpdateStale = row.status === "ACTIVE" && crmBd >= th;
+  const custTh = stale?.customerReminderThreshold ?? 999;
+  const crmTh = stale?.crmReminderThreshold ?? 999;
+  const customerUpdateStale = row.status === "ACTIVE" && customerBd >= custTh;
+  const crmUpdateStale = row.status === "ACTIVE" && crmBd >= crmTh;
   const extId =
     row.project_id != null && String(row.project_id).trim().length > 0
       ? String(row.project_id).trim()

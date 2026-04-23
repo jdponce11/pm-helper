@@ -18,6 +18,8 @@ CREATE TABLE users (
   full_name     TEXT NOT NULL,
   update_reminder_business_days INTEGER NOT NULL DEFAULT 2
     CHECK (update_reminder_business_days BETWEEN 1 AND 30),
+  crm_update_reminder_business_days INTEGER NOT NULL DEFAULT 2
+    CHECK (crm_update_reminder_business_days BETWEEN 1 AND 30),
   created_at    TIMESTAMPTZ DEFAULT NOW(),
   updated_at    TIMESTAMPTZ DEFAULT NOW()
 );

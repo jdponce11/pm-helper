@@ -19,15 +19,17 @@ const urgentOrderSql = `ORDER BY
  *   date rules as before). PASSIVE_MONITOR is excluded from this branch so arbitrary
  *   calendar deadlines do not drive passive the same as active next-step work.
  *
- * - Passive only when both customer and CRM update anchors are stale vs the user’s
- *   `update_reminder_business_days` threshold (same `pm_business_weekdays_after` test as
- *   `/reminders` and `customerUpdateStale` / `crmUpdateStale` in JSON). Both must be
- *   stale — one dimension alone does not surface passive here.
+ * - Passive only when both customer and CRM update anchors are stale vs their
+ *   respective user thresholds (`update_reminder_business_days` vs customer anchor,
+ *   `crm_update_reminder_business_days` vs CRM anchor; same `pm_business_weekdays_after`
+ *   test as `/reminders` and JSON flags). Both axes must exceed their thresholds —
+ *   one dimension alone does not surface passive here.
  */
 export async function queryUrgentProjects(
   pool: Pool,
   ownerId: number,
-  reminderThresholdBusinessDays: number
+  customerReminderBusinessDays: number,
+  crmReminderBusinessDays: number
 ): Promise<ProjectRow[]> {
   const tz = getUrgencyTimezone();
   const result = await pool.query<ProjectRow>(
@@ -43,11 +45,11 @@ export async function queryUrgentProjects(
          OR (
            action_flag = 'PASSIVE_MONITOR'::action_flag_enum
            AND pm_business_weekdays_after(COALESCE(last_customer_update_at, created_at), $2::text) >= $3
-           AND pm_business_weekdays_after(COALESCE(last_crm_update_at, created_at), $2::text) >= $3
+           AND pm_business_weekdays_after(COALESCE(last_crm_update_at, created_at), $2::text) >= $4
          )
        )
      ${urgentOrderSql}`,
-    [ownerId, tz, reminderThresholdBusinessDays]
+    [ownerId, tz, customerReminderBusinessDays, crmReminderBusinessDays]
   );
   return result.rows;
 }
@@ -56,11 +58,13 @@ export function appendUrgentConditions(
   conditions: string[],
   params: unknown[],
   p: number,
-  reminderThresholdBusinessDays: number
+  customerReminderBusinessDays: number,
+  crmReminderBusinessDays: number
 ): number {
   const tz = getUrgencyTimezone();
   const tzIdx = p;
-  const thIdx = p + 1;
+  const custThIdx = p + 1;
+  const crmThIdx = p + 2;
   conditions.push(`status = 'ACTIVE'::project_status_enum`);
   conditions.push(`(
     (
@@ -70,26 +74,28 @@ export function appendUrgentConditions(
     )
     OR (
       action_flag = 'PASSIVE_MONITOR'::action_flag_enum
-      AND pm_business_weekdays_after(COALESCE(last_customer_update_at, created_at), $${tzIdx}::text) >= $${thIdx}
-      AND pm_business_weekdays_after(COALESCE(last_crm_update_at, created_at), $${tzIdx}::text) >= $${thIdx}
+      AND pm_business_weekdays_after(COALESCE(last_customer_update_at, created_at), $${tzIdx}::text) >= $${custThIdx}
+      AND pm_business_weekdays_after(COALESCE(last_crm_update_at, created_at), $${tzIdx}::text) >= $${crmThIdx}
     )
   )`);
-  params.push(tz, reminderThresholdBusinessDays);
-  return p + 2;
+  params.push(tz, customerReminderBusinessDays, crmReminderBusinessDays);
+  return p + 3;
 }
 
 const staleOrderSql = urgentOrderSql;
 
 /**
- * Active projects stale on customer updates or CRM updates vs `thresholdBusinessDays`
- * (weekdays in (anchor_date, today] in URGENCY_TIMEZONE). Lists each axis separately for
- * `/reminders`; passive dual-axis surfacing in the attention queue uses the same
- * `pm_business_weekdays_after` comparison in `queryUrgentProjects`.
+ * Active projects stale on customer vs `customerThresholdBusinessDays` or CRM vs
+ * `crmThresholdBusinessDays` (weekdays in (anchor_date, today] in URGENCY_TIMEZONE).
+ * Lists each axis separately for `/reminders`; passive dual-axis surfacing in the
+ * attention queue uses the same `pm_business_weekdays_after` comparison in
+ * `queryUrgentProjects`, with each axis compared to its own threshold.
  */
 export async function queryStaleUpdateProjects(
   pool: Pool,
   ownerId: number,
-  thresholdBusinessDays: number
+  customerThresholdBusinessDays: number,
+  crmThresholdBusinessDays: number
 ): Promise<{ customerStale: ProjectRow[]; crmStale: ProjectRow[] }> {
   const tz = getUrgencyTimezone();
   const [customer, crm] = await Promise.all([
@@ -99,7 +105,7 @@ export async function queryStaleUpdateProjects(
          AND status = 'ACTIVE'::project_status_enum
          AND pm_business_weekdays_after(COALESCE(last_customer_update_at, created_at), $2::text) >= $3
        ${staleOrderSql}`,
-      [ownerId, tz, thresholdBusinessDays]
+      [ownerId, tz, customerThresholdBusinessDays]
     ),
     pool.query<ProjectRow>(
       `SELECT * FROM projects
@@ -107,7 +113,7 @@ export async function queryStaleUpdateProjects(
          AND status = 'ACTIVE'::project_status_enum
          AND pm_business_weekdays_after(COALESCE(last_crm_update_at, created_at), $2::text) >= $3
        ${staleOrderSql}`,
-      [ownerId, tz, thresholdBusinessDays]
+      [ownerId, tz, crmThresholdBusinessDays]
     ),
   ]);
   return { customerStale: customer.rows, crmStale: crm.rows };
