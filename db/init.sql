@@ -62,6 +62,8 @@ CREATE TABLE projects (
   status                 project_status_enum NOT NULL DEFAULT 'ACTIVE',
   last_customer_update_at TIMESTAMPTZ,
   last_crm_update_at     TIMESTAMPTZ,
+  foc_registered_in_crm BOOLEAN NOT NULL DEFAULT false,
+  foc_date               DATE,
   created_at             TIMESTAMPTZ DEFAULT NOW(),
   updated_at             TIMESTAMPTZ DEFAULT NOW()
 );

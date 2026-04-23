@@ -60,6 +60,75 @@ function BusinessDaysGrillCell(props: { project: Project }) {
   );
 }
 
+function FocCrmTableCell(props: {
+  project: Project;
+  readOnly: boolean;
+  onAck: (id: number, focDate: string) => Promise<void>;
+}) {
+  const { project: p, readOnly, onAck } = props;
+  const [draft, setDraft] = useState("");
+  const [pendingAck, setPendingAck] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!p.focRegisteredInCrm) setDraft("");
+  }, [p.focRegisteredInCrm, p.id]);
+
+  if (p.focRegisteredInCrm) {
+    return (
+      <div
+        className="foc-cell foc-cell--done"
+        title="FOC date shared with customer and registered in CRM"
+      >
+        <span className="mono">{p.focDate ?? "—"}</span>
+      </div>
+    );
+  }
+
+  if (readOnly) {
+    return <span className="muted">—</span>;
+  }
+
+  async function commit() {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(draft)) return;
+    setBusy(true);
+    try {
+      await onAck(p.id, draft);
+    } catch {
+      /* toast from parent; reset checkbox below */
+    } finally {
+      setBusy(false);
+      setPendingAck(false);
+    }
+  }
+
+  return (
+    <div className="foc-cell" title="Pick the FOC date, then confirm CRM registration">
+      <input
+        type="date"
+        className="inline-edit__control foc-cell__date"
+        value={draft}
+        aria-label="FOC date (reference)"
+        disabled={busy}
+        onChange={(e) => setDraft(e.target.value)}
+      />
+      <label className="foc-inline-check">
+        <input
+          type="checkbox"
+          checked={pendingAck}
+          disabled={busy || !/^\d{4}-\d{2}-\d{2}$/.test(draft)}
+          aria-label="FOC date shared with customer and registered in CRM"
+          onChange={(e) => {
+            const on = e.target.checked;
+            setPendingAck(on);
+            if (on) void commit();
+          }}
+        />
+      </label>
+    </div>
+  );
+}
+
 function rowClassName(p: Project): string {
   const parts: string[] = [];
   if (p.status === "CLOSED") parts.push("row--closed");
@@ -448,6 +517,24 @@ export function ProjectTable(props: {
     [load, onPortfolioChanged]
   );
 
+  const handleFocAck = useCallback(
+    async (id: number, focDate: string) => {
+      try {
+        await patchProject(id, { focRegisteredInCrm: true, focDate });
+        setToast({ type: "success", message: "Saved" });
+        await load();
+        onPortfolioChanged?.();
+      } catch (e) {
+        setToast({
+          type: "error",
+          message: e instanceof Error ? e.message : "Save failed",
+        });
+        throw e;
+      }
+    },
+    [load, onPortfolioChanged]
+  );
+
   const handleDelete = useCallback(
     async (p: Project) => {
       if (
@@ -544,6 +631,21 @@ export function ProjectTable(props: {
           <abbr title="Business days open (Mon–Fri) since start date">Open (bd)</abbr>
         ),
         cell: ({ row }) => <BusinessDaysGrillCell project={row.original} />,
+        enableSorting: false,
+      },
+      {
+        id: "focRegisteredInCrm",
+        header: () => (
+          <abbr title="FOC date shared with customer and registered in CRM">FOC</abbr>
+        ),
+        cell: ({ row }) => (
+          <FocCrmTableCell
+            key={row.original.id}
+            project={row.original}
+            readOnly={row.original.status === "CLOSED"}
+            onAck={handleFocAck}
+          />
+        ),
         enableSorting: false,
       },
       {
@@ -676,7 +778,7 @@ export function ProjectTable(props: {
         enableHiding: false,
       },
     ],
-    [handleDelete, handlePatch, handleReopen, inlineSaving, statusSaving]
+    [handleDelete, handleFocAck, handlePatch, handleReopen, inlineSaving, statusSaving]
   );
 
   const table = useReactTable({
@@ -714,8 +816,9 @@ export function ProjectTable(props: {
         {urgentOnly ? (
           <div className="toolbar__urgent-banner" role="status">
             <span>
-              Attention queue: next step due today (non-passive), or passive when customer
-              and CRM updates each exceed their own reminder threshold
+              Attention queue: next step due today (non-passive), passive when customer and
+              CRM updates each exceed their own reminder threshold, or FOC not registered in
+              CRM within the first 10 business weekdays after start
             </span>
             <button
               type="button"

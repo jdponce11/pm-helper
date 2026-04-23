@@ -84,6 +84,8 @@ export function ProjectFormModal(props: {
         lastCrmUpdateAt: p.lastCrmUpdateAt,
         customerUpdateStale: p.customerUpdateStale,
         crmUpdateStale: p.crmUpdateStale,
+        focRegisteredInCrm: p.focRegisteredInCrm,
+        focDate: p.focDate ? startDateForDateInput(p.focDate) : null,
       });
     } else {
       setDeadlineMode("date");
@@ -168,6 +170,18 @@ export function ProjectFormModal(props: {
     const startDate =
       startDateForDateInput(values.startDate) || values.startDate.trim().slice(0, 10);
     const extId = (values.projectId ?? "").trim();
+    let focDateOut: string | null = null;
+    if (values.focRegisteredInCrm) {
+      const fd =
+        startDateForDateInput(values.focDate ?? "") ||
+        (values.focDate ?? "").trim().slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fd)) {
+        setError("Select the FOC calendar date when confirming CRM registration.");
+        setSaving(false);
+        return;
+      }
+      focDateOut = fd;
+    }
     const payload: ProjectWriteBody = {
       ...values,
       parentProjectName: values.parentProjectName.trim(),
@@ -176,6 +190,8 @@ export function ProjectFormModal(props: {
       nextStepDeadline,
       latestUpdate: values.latestUpdate?.trim() || null,
       nextAction: values.nextAction?.trim() || null,
+      focDate: focDateOut,
+      focRegisteredInCrm: values.focRegisteredInCrm,
       ...(markCustomerToday ? { markCustomerUpdated: true } : {}),
       ...(markCrmToday ? { markCrmUpdated: true } : {}),
     };
@@ -427,6 +443,29 @@ export function ProjectFormModal(props: {
                     )}
                   </span>
                 </span>
+              </label>
+              <label className="form-grid__full">
+                FOC date (reference — set when you confirm CRM registration; you can edit later)
+                <input
+                  type="date"
+                  value={values.focDate ? startDateForDateInput(values.focDate) : ""}
+                  onChange={(e) =>
+                    set("focDate", e.target.value ? e.target.value : null)
+                  }
+                />
+              </label>
+              <label className="update-cadence-check">
+                <input
+                  type="checkbox"
+                  checked={values.focRegisteredInCrm}
+                  disabled={props.mode === "edit" && Boolean(props.initial?.focRegisteredInCrm)}
+                  onChange={(e) => {
+                    const next = e.target.checked;
+                    set("focRegisteredInCrm", next);
+                    if (!next) set("focDate", null);
+                  }}
+                />
+                <span>FOC date shared with customer and registered in CRM</span>
               </label>
             </div>
           </div>

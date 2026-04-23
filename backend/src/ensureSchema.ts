@@ -272,3 +272,55 @@ export async function ensureOptionalExternalProjectIdSchema(): Promise<void> {
   `);
   console.log("[schema] Optional external project_id migration applied.");
 }
+
+/**
+ * FOC acknowledgment flag on projects (FOC date shared with customer and registered in CRM).
+ */
+export async function ensureFocRegisteredInCrmSchema(): Promise<void> {
+  const tbl = await pool.query<{ exists: boolean }>(
+    `SELECT EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = 'projects'
+    ) AS exists`
+  );
+  if (!tbl.rows[0]?.exists) return;
+
+  const col = await pool.query<{ exists: boolean }>(
+    `SELECT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'projects'
+        AND column_name = 'foc_registered_in_crm'
+    ) AS exists`
+  );
+  if (col.rows[0]?.exists) return;
+
+  console.log("[schema] Adding projects.foc_registered_in_crm…");
+  await pool.query(
+    `ALTER TABLE projects ADD COLUMN foc_registered_in_crm BOOLEAN NOT NULL DEFAULT false`
+  );
+  console.log("[schema] foc_registered_in_crm column added.");
+}
+
+/** Optional informative FOC calendar date (set together with CRM registration acknowledgment). */
+export async function ensureFocDateSchema(): Promise<void> {
+  const tbl = await pool.query<{ exists: boolean }>(
+    `SELECT EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = 'projects'
+    ) AS exists`
+  );
+  if (!tbl.rows[0]?.exists) return;
+
+  const col = await pool.query<{ exists: boolean }>(
+    `SELECT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'projects'
+        AND column_name = 'foc_date'
+    ) AS exists`
+  );
+  if (col.rows[0]?.exists) return;
+
+  console.log("[schema] Adding projects.foc_date…");
+  await pool.query(`ALTER TABLE projects ADD COLUMN foc_date DATE`);
+  console.log("[schema] foc_date column added.");
+}

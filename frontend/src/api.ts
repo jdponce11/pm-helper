@@ -21,10 +21,10 @@ export interface ListParams {
   /** active (default on server), closed, or all */
   status?: "active" | "closed" | "all";
   /**
-   * Server “attention queue”: ACTIVE projects where either (a) next step deadline is
-   * today in URGENCY_TIMEZONE and action is not PASSIVE_MONITOR, or (b) PASSIVE_MONITOR
-   * with customer anchor stale vs your customer threshold and CRM anchor stale vs your
-   * CRM threshold (same logic as reminder lists / JSON flags).
+   * Server “attention queue”: ACTIVE projects where (a) next step deadline is today in
+   * URGENCY_TIMEZONE and action is not PASSIVE_MONITOR, or (b) PASSIVE_MONITOR with both
+   * customer and CRM anchors stale vs thresholds, or (c) FOC not registered in CRM within
+   * the first 10 business weekdays after start_date (see backend urgentQuery).
    */
   urgentOnly?: boolean;
 }
@@ -204,6 +204,7 @@ function stripReadOnlyProjectFields(body: ProjectWriteBody): Record<string, unkn
     lastCrmUpdateAt: _lr,
     customerUpdateStale: _cs,
     crmUpdateStale: _cr,
+    urgencyReasons: _ur,
     ...payload
   } = body;
   return payload;
@@ -241,8 +242,15 @@ export type ProjectPatch = Partial<Omit<Project, "id" | "createdAt" | "updatedAt
 };
 
 export async function patchProject(id: number, body: ProjectPatch): Promise<Project> {
-  const { status: _s, lastCustomerUpdateAt: _lc, lastCrmUpdateAt: _lr, customerUpdateStale: _cs, crmUpdateStale: _cr, ...rest } =
-    body;
+  const {
+    status: _s,
+    lastCustomerUpdateAt: _lc,
+    lastCrmUpdateAt: _lr,
+    customerUpdateStale: _cs,
+    crmUpdateStale: _cr,
+    urgencyReasons: _ur,
+    ...rest
+  } = body;
   const res = await apiFetch(`/api/projects/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },

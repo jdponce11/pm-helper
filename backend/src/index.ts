@@ -4,6 +4,8 @@ import cors from "cors";
 import express from "express";
 import { pool } from "./db.js";
 import {
+  ensureFocDateSchema,
+  ensureFocRegisteredInCrmSchema,
   ensureNextStepDeadlineSchema,
   ensureOptionalExternalProjectIdSchema,
   ensurePhase7Schema,
@@ -38,6 +40,8 @@ async function main() {
   await ensureNextStepDeadlineSchema();
   await ensureUpdateCadenceSchema();
   await ensureOptionalExternalProjectIdSchema();
+  await ensureFocRegisteredInCrmSchema();
+  await ensureFocDateSchema();
   app.listen(port, "0.0.0.0", () => {
     console.log(`API listening on ${port}`);
   });

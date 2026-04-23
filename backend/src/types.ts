@@ -8,6 +8,12 @@ export type ActionFlag =
 
 export type ProjectStatus = "ACTIVE" | "CLOSED";
 
+/** Why a project appears in the attention / urgent queue (see urgentQuery.ts). */
+export type UrgencyReason =
+  | "NEXT_STEP_DUE_TODAY"
+  | "PASSIVE_DUAL_STALE"
+  | "FOC_NOT_REGISTERED_IN_CRM";
+
 export interface UserRow {
   id: number;
   email: string;
@@ -40,6 +46,10 @@ export interface ProjectRow {
   status: ProjectStatus;
   last_customer_update_at: string | null;
   last_crm_update_at: string | null;
+  /** True = FOC date shared with customer and registered in CRM (one-way in UI). */
+  foc_registered_in_crm: boolean;
+  /** Informative FOC calendar date (reference); set with CRM acknowledgment. */
+  foc_date: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -82,6 +92,11 @@ export interface ProjectJson {
   lastCrmUpdateAt: string | null;
   customerUpdateStale: boolean;
   crmUpdateStale: boolean;
+  focRegisteredInCrm: boolean;
+  /** Informative FOC calendar date (YYYY-MM-DD); null until acknowledged with a date. */
+  focDate: string | null;
+  /** Present on `/projects/urgent` and `?urgentOnly` list responses. */
+  urgencyReasons?: readonly UrgencyReason[];
 }
 
 export function rowToJson(
@@ -89,7 +104,8 @@ export function rowToJson(
   stale?: ProjectStaleCounts & {
     customerReminderThreshold: number;
     crmReminderThreshold: number;
-  }
+  },
+  options?: { urgencyReasons?: readonly UrgencyReason[] }
 ): ProjectJson {
   const customerBd = stale?.customer ?? 0;
   const crmBd = stale?.crm ?? 0;
@@ -123,6 +139,14 @@ export function rowToJson(
     lastCrmUpdateAt: row.last_crm_update_at ?? null,
     customerUpdateStale,
     crmUpdateStale,
+    focRegisteredInCrm: Boolean(row.foc_registered_in_crm),
+    focDate:
+      row.foc_date == null || String(row.foc_date as unknown).trim() === ""
+        ? null
+        : formatStartDateForJson(row.foc_date as unknown),
+    ...(options?.urgencyReasons?.length
+      ? { urgencyReasons: options.urgencyReasons }
+      : {}),
   };
 }
 

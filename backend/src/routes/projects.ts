@@ -7,6 +7,11 @@ import {
   appendUrgentConditions,
   queryStaleUpdateProjects,
   queryUrgentProjects,
+  sqlUrgencyMetaSelectColumns,
+  splitUrgentQueryRow,
+  type UrgentQueryMeta,
+  urgencyReasonsFromMeta,
+  URGENT_ATTENTION_ORDER_SQL,
 } from "../urgentQuery.js";
 import { fetchProjectStaleBusinessDayCounts, fetchUserReminderThresholds } from "../projectStaleCounts.js";
 import {
@@ -38,7 +43,7 @@ const trimmedExternalProjectId = z.preprocess(
     .transform((s) => (s.length === 0 ? null : s))
 );
 
-const projectBodySchema = z.object({
+const projectFieldsSchema = z.object({
   parentProjectName: trimmedParentProjectName,
   finalCustomer: z.string().min(1),
   country: z.string().min(1),
@@ -51,17 +56,41 @@ const projectBodySchema = z.object({
   actionFlag: actionFlagSchema,
   markCustomerUpdated: z.boolean().optional(),
   markCrmUpdated: z.boolean().optional(),
+  focRegisteredInCrm: z.boolean().optional(),
+  focDate: z.union([dateString, z.null()]).optional(),
 });
 
-const patchBodySchema = projectBodySchema.partial().refine(
-  (obj) => {
-    const keys = Object.keys(obj);
-    if (keys.length === 0) return false;
-    if (obj.markCustomerUpdated === true || obj.markCrmUpdated === true) return true;
-    return keys.some((k) => k !== "markCustomerUpdated" && k !== "markCrmUpdated");
-  },
-  { message: "At least one field is required" }
+const projectBodySchema = projectFieldsSchema.refine(
+  (d) =>
+    d.focRegisteredInCrm !== true ||
+    (typeof d.focDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d.focDate)),
+  {
+    message: "focDate (YYYY-MM-DD) is required when focRegisteredInCrm is true",
+    path: ["focDate"],
+  }
 );
+
+const patchBodySchema = projectFieldsSchema
+  .partial()
+  .refine(
+    (obj) => {
+      const keys = Object.keys(obj);
+      if (keys.length === 0) return false;
+      if (obj.markCustomerUpdated === true || obj.markCrmUpdated === true) return true;
+      if (obj.focRegisteredInCrm !== undefined) return true;
+      return keys.some((k) => k !== "markCustomerUpdated" && k !== "markCrmUpdated");
+    },
+    { message: "At least one field is required" }
+  )
+  .refine(
+    (obj) =>
+      obj.focRegisteredInCrm !== true ||
+      (typeof obj.focDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(obj.focDate)),
+    {
+      message: "focDate (YYYY-MM-DD) is required when focRegisteredInCrm is true",
+      path: ["focDate"],
+    }
+  );
 
 const sortColumns = [
   "parent_project_name",
@@ -166,6 +195,32 @@ function ownerId(req: Request): number {
   return req.user!.id;
 }
 
+function packRowWithOptionalUrgency(
+  raw: ProjectRow & Partial<UrgentQueryMeta>,
+  c: { customer: number; crm: number },
+  reminderTh: { customer: number; crm: number },
+  includeReasons: boolean
+) {
+  if (
+    includeReasons &&
+    typeof raw.urgency_due_today === "boolean" &&
+    typeof raw.urgency_passive_dual === "boolean" &&
+    typeof raw.urgency_foc === "boolean"
+  ) {
+    const { row, meta } = splitUrgentQueryRow(raw as ProjectRow & UrgentQueryMeta);
+    return rowToJson(row, {
+      ...c,
+      customerReminderThreshold: reminderTh.customer,
+      crmReminderThreshold: reminderTh.crm,
+    }, { urgencyReasons: urgencyReasonsFromMeta(meta) });
+  }
+  return rowToJson(raw as ProjectRow, {
+    ...c,
+    customerReminderThreshold: reminderTh.customer,
+    crmReminderThreshold: reminderTh.crm,
+  });
+}
+
 projectsRouter.post("/", async (req, res) => {
   const parsed = projectBodySchema.safeParse(req.body);
   if (!parsed.success) {
@@ -188,10 +243,12 @@ projectsRouter.post("/", async (req, res) => {
           parent_project_name, final_customer, country, start_date, project_id,
           latest_update, next_action, next_step_deadline, next_step_deadline_has_time,
           wholesale_customer, action_flag,
-          last_customer_update_at, last_crm_update_at
+          last_customer_update_at, last_crm_update_at, foc_registered_in_crm, foc_date
         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::action_flag_enum,
           CASE WHEN $13 THEN NOW() ELSE NULL END,
-          CASE WHEN $14 THEN NOW() ELSE NULL END
+          CASE WHEN $14 THEN NOW() ELSE NULL END,
+          $15,
+          $16
         )
         RETURNING *`,
         [
@@ -209,6 +266,8 @@ projectsRouter.post("/", async (req, res) => {
           b.actionFlag as ActionFlag,
           markCustomer,
           markCrm,
+          b.focRegisteredInCrm ?? false,
+          b.focRegisteredInCrm === true && b.focDate ? b.focDate : null,
         ]
       );
       inserted = rows.rows[0];
@@ -373,12 +432,27 @@ projectsRouter.get("/", async (req, res) => {
           start_date ASC`
       : `ORDER BY ${sortBy} ${sortOrder} NULLS LAST`;
 
-    const dataResult = await pool.query<ProjectRow>(
-      `SELECT * FROM projects WHERE ${whereSql}
-       ${orderSql}
-       LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
-      listParams
-    );
+    const urgencyMetaCols = sqlUrgencyMetaSelectColumns().trim();
+    const dataSql =
+      urgentOnly && sortPriority
+        ? `SELECT * FROM (
+             SELECT projects.*,
+             ${urgencyMetaCols}
+             FROM projects WHERE ${whereSql}
+           ) u
+           ${URGENT_ATTENTION_ORDER_SQL}
+           LIMIT $${limitIdx} OFFSET $${offsetIdx}`
+        : urgentOnly
+          ? `SELECT projects.*,
+             ${urgencyMetaCols}
+             FROM projects WHERE ${whereSql}
+             ${orderSql}
+             LIMIT $${limitIdx} OFFSET $${offsetIdx}`
+          : `SELECT * FROM projects WHERE ${whereSql}
+             ${orderSql}
+             LIMIT $${limitIdx} OFFSET $${offsetIdx}`;
+
+    const dataResult = await pool.query<ProjectRow & Partial<UrgentQueryMeta>>(dataSql, listParams);
 
     const staleMap = await fetchProjectStaleBusinessDayCounts(
       pool,
@@ -388,11 +462,7 @@ projectsRouter.get("/", async (req, res) => {
     res.json({
       data: dataResult.rows.map((row) => {
         const c = staleMap.get(row.id) ?? { customer: 0, crm: 0 };
-        return rowToJson(row, {
-          ...c,
-          customerReminderThreshold: reminderTh.customer,
-          crmReminderThreshold: reminderTh.crm,
-        });
+        return packRowWithOptionalUrgency(row, c, reminderTh, urgentOnly);
       }),
       meta: {
         total,
@@ -421,15 +491,19 @@ projectsRouter.get("/urgent", async (req, res) => {
     );
     const staleMap = await fetchProjectStaleBusinessDayCounts(
       pool,
-      rows.map((r) => r.id)
+      rows.map((r) => r.row.id)
     );
-    const data = rows.map((row) => {
+    const data = rows.map(({ row, urgencyReasons }) => {
       const c = staleMap.get(row.id) ?? { customer: 0, crm: 0 };
-      return rowToJson(row, {
-        ...c,
-        customerReminderThreshold: reminderTh.customer,
-        crmReminderThreshold: reminderTh.crm,
-      });
+      return rowToJson(
+        row,
+        {
+          ...c,
+          customerReminderThreshold: reminderTh.customer,
+          crmReminderThreshold: reminderTh.crm,
+        },
+        { urgencyReasons }
+      );
     });
     res.json({ count: data.length, data });
   } catch (e) {
@@ -711,6 +785,12 @@ projectsRouter.patch("/:id", async (req, res) => {
   if (b.markCrmUpdated === true) {
     assignments.push(`last_crm_update_at = NOW()`);
   }
+  if (b.focRegisteredInCrm !== undefined) {
+    push("foc_registered_in_crm", b.focRegisteredInCrm);
+  }
+  if (b.focDate !== undefined) {
+    push("foc_date", b.focDate);
+  }
 
   if (assignments.length === 0) {
     res.status(400).json({ error: "At least one field is required" });
@@ -867,8 +947,10 @@ projectsRouter.put("/:id", async (req, res) => {
         wholesale_customer = $10,
         action_flag = $11::action_flag_enum,
         last_customer_update_at = CASE WHEN $12 THEN NOW() ELSE last_customer_update_at END,
-        last_crm_update_at = CASE WHEN $13 THEN NOW() ELSE last_crm_update_at END
-      WHERE id = $14
+        last_crm_update_at = CASE WHEN $13 THEN NOW() ELSE last_crm_update_at END,
+        foc_registered_in_crm = $14,
+        foc_date = $15
+      WHERE id = $16
       RETURNING *`,
       [
         b.parentProjectName,
@@ -884,6 +966,8 @@ projectsRouter.put("/:id", async (req, res) => {
         b.actionFlag as ActionFlag,
         markCustomer,
         markCrm,
+        b.focRegisteredInCrm ?? false,
+        b.focRegisteredInCrm === true && b.focDate ? b.focDate : null,
         id,
       ]
     );

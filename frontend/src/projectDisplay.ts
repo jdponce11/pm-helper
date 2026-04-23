@@ -19,12 +19,16 @@ export function formatUrgentReminderLine(
 /** Bell / reminder list: passive dual-stale rows get cadence context (not next-step due today). */
 export function formatUrgentBellLine(p: Project): string {
   const base = formatUrgentReminderLine(p.projectId, p.parentProjectName);
+  const hints: string[] = [];
   if (
     p.actionFlag === "PASSIVE_MONITOR" &&
     p.customerUpdateStale &&
     p.crmUpdateStale
   ) {
-    return `${base} · passive — customer and CRM cadences each exceed their thresholds`;
+    hints.push("passive — customer and CRM cadences each exceed their thresholds");
   }
-  return base;
+  if (p.urgencyReasons?.includes("FOC_NOT_REGISTERED_IN_CRM")) {
+    hints.push("FOC not registered in CRM yet");
+  }
+  return hints.length > 0 ? `${base} · ${hints.join(" · ")}` : base;
 }

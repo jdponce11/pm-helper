@@ -723,6 +723,27 @@ textarea:focus {
   font-size: 0.78rem;
 }
 
+.foc-cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.foc-cell__date {
+  max-width: 11rem;
+}
+
+.foc-cell--done .mono {
+  font-size: 0.88rem;
+}
+
+.foc-inline-check {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+
 .settings-tz-hint {
   margin-top: 0.5rem;
   font-size: 0.8rem;

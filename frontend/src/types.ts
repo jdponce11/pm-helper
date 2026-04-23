@@ -6,6 +6,11 @@ export type ActionFlag =
 
 export type ProjectStatus = "ACTIVE" | "CLOSED";
 
+export type UrgencyReason =
+  | "NEXT_STEP_DUE_TODAY"
+  | "PASSIVE_DUAL_STALE"
+  | "FOC_NOT_REGISTERED_IN_CRM";
+
 export interface AuthUser {
   id: number;
   email: string;
@@ -37,6 +42,11 @@ export interface Project {
   lastCrmUpdateAt: string | null;
   customerUpdateStale: boolean;
   crmUpdateStale: boolean;
+  focRegisteredInCrm: boolean;
+  /** Informative FOC calendar date (YYYY-MM-DD); set with CRM acknowledgment. */
+  focDate: string | null;
+  /** Present on urgent / attention-queue responses. */
+  urgencyReasons?: readonly UrgencyReason[];
 }
 
 /** Archived “Latest update” snapshot (Phase 3) */
@@ -93,5 +103,7 @@ export function emptyProject(): Omit<Project, "id" | "createdAt" | "updatedAt"> 
     lastCrmUpdateAt: null,
     customerUpdateStale: false,
     crmUpdateStale: false,
+    focRegisteredInCrm: false,
+    focDate: null,
   };
 }

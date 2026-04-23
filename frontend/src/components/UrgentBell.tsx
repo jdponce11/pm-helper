@@ -121,8 +121,9 @@ export function UrgentBell(props: {
             <>
               <h3 className="urgent-bell__sub">Attention queue</h3>
               <p className="muted urgent-bell__subnote">
-                Next step due today (non-passive), or passive when the customer anchor and
-                CRM anchor each exceed their own reminder threshold.
+                Next step due today (non-passive), passive when the customer anchor and CRM
+                anchor each exceed their own reminder threshold, or FOC not registered in CRM
+                within the first 10 business weekdays after the project start date.
               </p>
               {urgentRows.length === 0 ? (
                 <p className="muted urgent-bell__popover-empty">None</p>
