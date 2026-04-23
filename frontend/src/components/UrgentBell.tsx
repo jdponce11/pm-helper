@@ -1,13 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchUpdateReminders, fetchUrgentSummary } from "../api";
 import type { Project } from "../types";
-import { formatUrgentReminderLine } from "../projectDisplay";
+import { formatUrgentBellLine } from "../projectDisplay";
 
 const POLL_MS = 5 * 60 * 1000;
-
-function projectLine(p: Project): string {
-  return formatUrgentReminderLine(p.projectId, p.parentProjectName);
-}
 
 export function UrgentBell(props: {
   urgentOnly: boolean;
@@ -116,20 +112,24 @@ export function UrgentBell(props: {
                 setOpen(false);
               }}
             >
-              {urgentOnly ? "Show all projects" : "Show due-today projects only"}
+              {urgentOnly ? "Show all projects" : "Show attention queue only"}
             </button>
           </div>
           {error ? (
             <p className="muted urgent-bell__popover-empty">Could not load reminders.</p>
           ) : (
             <>
-              <h3 className="urgent-bell__sub">Due today (next step)</h3>
+              <h3 className="urgent-bell__sub">Attention queue</h3>
+              <p className="muted urgent-bell__subnote">
+                Next step due today (non-passive), or passive when both customer and CRM
+                updates exceed your threshold.
+              </p>
               {urgentRows.length === 0 ? (
                 <p className="muted urgent-bell__popover-empty">None</p>
               ) : (
                 <ul className="urgent-bell__list">
                   {urgentRows.map((p) => (
-                    <li key={`u-${p.id}`}>{projectLine(p)}</li>
+                    <li key={`u-${p.id}`}>{formatUrgentBellLine(p)}</li>
                   ))}
                 </ul>
               )}

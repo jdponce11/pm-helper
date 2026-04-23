@@ -20,7 +20,12 @@ export interface ListParams {
   wholesaleCustomer: string;
   /** active (default on server), closed, or all */
   status?: "active" | "closed" | "all";
-  /** Deadline today (server timezone) and not PASSIVE_MONITOR */
+  /**
+   * Server “attention queue”: ACTIVE projects where either (a) next step deadline is
+   * today in URGENCY_TIMEZONE and action is not PASSIVE_MONITOR, or (b) PASSIVE_MONITOR
+   * with both customer and CRM update anchors stale vs your update_reminder_business_days
+   * (same thresholds as reminder lists).
+   */
   urgentOnly?: boolean;
 }
 

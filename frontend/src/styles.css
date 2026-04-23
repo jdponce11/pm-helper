@@ -221,6 +221,12 @@ body {
   color: var(--muted);
 }
 
+.urgent-bell__subnote {
+  margin: 0 0 0.45rem;
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
 .urgent-bell__list {
   margin: 0 0 0.35rem;
   padding-left: 1.1rem;

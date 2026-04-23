@@ -1,3 +1,5 @@
+import type { Project } from "./types";
+
 /** Shown for rows with no external / CRM project id yet (stored as null). */
 export const PENDING_EXTERNAL_PROJECT_ID_LABEL = "Pending";
 
@@ -12,4 +14,17 @@ export function formatUrgentReminderLine(
 ): string {
   const parent = parentName.trim();
   return `${formatExternalProjectId(externalId)} — ${parent.length > 0 ? parent : "—"}`;
+}
+
+/** Bell / reminder list: passive dual-stale rows get cadence context (not next-step due today). */
+export function formatUrgentBellLine(p: Project): string {
+  const base = formatUrgentReminderLine(p.projectId, p.parentProjectName);
+  if (
+    p.actionFlag === "PASSIVE_MONITOR" &&
+    p.customerUpdateStale &&
+    p.crmUpdateStale
+  ) {
+    return `${base} · passive — both update cadences overdue`;
+  }
+  return base;
 }

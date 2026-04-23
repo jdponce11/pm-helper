@@ -337,14 +337,13 @@ projectsRouter.get("/", async (req, res) => {
 
   const urgentOnly =
     req.query.urgentOnly === "true" || req.query.urgentOnly === "1";
-  if (urgentOnly) {
-    p = appendUrgentConditions(conditions, params, p);
-  }
-
-  const whereSql = conditions.join(" AND ");
 
   try {
     const reminderThreshold = await fetchUserReminderThreshold(pool, ownerId(req));
+    if (urgentOnly) {
+      p = appendUrgentConditions(conditions, params, p, reminderThreshold);
+    }
+    const whereSql = conditions.join(" AND ");
     const countResult = await pool.query<{ c: string }>(
       `SELECT COUNT(*)::text AS c FROM projects WHERE ${whereSql}`,
       params
@@ -403,8 +402,8 @@ projectsRouter.get("/", async (req, res) => {
 
 projectsRouter.get("/urgent", async (req, res) => {
   try {
-    const rows = await queryUrgentProjects(pool, ownerId(req));
     const reminderThreshold = await fetchUserReminderThreshold(pool, ownerId(req));
+    const rows = await queryUrgentProjects(pool, ownerId(req), reminderThreshold);
     const staleMap = await fetchProjectStaleBusinessDayCounts(
       pool,
       rows.map((r) => r.id)

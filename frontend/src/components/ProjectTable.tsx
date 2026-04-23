@@ -76,7 +76,12 @@ function rowClassName(p: Project): string {
     default:
       break;
   }
-  if (isDeadlinePast(p.nextStepDeadline)) parts.push("row--deadline-past");
+  if (
+    p.actionFlag !== "PASSIVE_MONITOR" &&
+    isDeadlinePast(p.nextStepDeadline)
+  ) {
+    parts.push("row--deadline-past");
+  }
   return parts.join(" ");
 }
 
@@ -708,7 +713,10 @@ export function ProjectTable(props: {
       <div className="toolbar">
         {urgentOnly ? (
           <div className="toolbar__urgent-banner" role="status">
-            <span>Due today, needs attention (not passive)</span>
+            <span>
+              Attention queue: next step due today (non-passive), or passive when both
+              customer and CRM updates exceed your threshold
+            </span>
             <button
               type="button"
               className="btn btn--ghost btn--small"
